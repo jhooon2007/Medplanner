@@ -1,0 +1,35 @@
+{
+  "name": "med-planner",
+  "version": "1.0.0",
+  "description": "Med Planner by João - Plataforma Web Responsiva de Planejamento de Medicina 2026.2",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently -n \"API,WEB\" -c \"cyan,green\" \"node server/index.js\" \"npm.cmd --prefix client run dev\"",
+    "server": "node server/index.js",
+    "client": "npm.cmd --prefix client run dev",
+    "build": "npm.cmd --prefix client run build",
+    "start": "node server/index.js"
+  },
+  "keywords": [
+    "med-planner",
+    "medicina",
+    "ufg",
+    "planner",
+    "react",
+    "tailwind",
+    "shadcn"
+  ],
+  "author": "João Gabriel",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "concurrently": "^10.0.6",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0"
+  }
+}
