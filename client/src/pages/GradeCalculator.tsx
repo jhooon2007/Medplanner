@@ -171,13 +171,15 @@ export const GradeCalculator: React.FC = () => {
   const histoSomaProvas = (getVal('HISTO_P1') + getVal('HISTO_P2') + getVal('HISTO_P3') + getVal('HISTO_P4')) / 4
   const mediaHistologia = Math.min(10, histoSomaProvas + Math.min(0.5, getVal('HISTO_EXTRA')))
 
+  const mediaIntegrador = (getVal('INTEG_FORUM_1') + getVal('INTEG_FORUM_2') + getVal('INTEG_CASO_CLINICO')) / 3
+
+  // Nota final CHS II: Média geométrica das 5 disciplinas (Anatomia, Bioquímica, Fisiologia, Histologia e Módulo Integrador)
   const prodCHS = Math.max(0.001, mediaAnatomia) *
                   Math.max(0.001, mediaBioquimica) *
                   Math.max(0.001, mediaFisiologia) *
-                  Math.max(0.001, mediaHistologia)
-  const mediaGeometricaCHS = Math.pow(prodCHS, 1 / 4)
-  const mediaIntegrador = (getVal('INTEG_FORUM_1') + getVal('INTEG_FORUM_2') + getVal('INTEG_CASO_CLINICO')) / 3
-  const notaFinalCHS = (mediaGeometricaCHS * (mediaIntegrador / 10))
+                  Math.max(0.001, mediaHistologia) *
+                  Math.max(0.001, mediaIntegrador)
+  const notaFinalCHS = Math.pow(prodCHS, 1 / 5)
 
   // IMC II
   const rpList = [1, 2, 3, 4, 5, 6].map(i => Math.max(0.001, getVal(`IMC_RP_${i}`)))
@@ -307,7 +309,7 @@ export const GradeCalculator: React.FC = () => {
                   Nota Final Calculada: {notaFinalCHS.toFixed(2)}
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-xl leading-relaxed">
-                  <strong>Fórmula UFG:</strong> Média Geométrica das 4 disciplinas ({mediaGeometricaCHS.toFixed(2)}) × Média Aritmética do Integrador ({(mediaIntegrador / 10).toFixed(3)}).
+                  <strong>Fórmula UFG:</strong> Média Geométrica das 5 disciplinas/módulos: Anatomia ({mediaAnatomia.toFixed(2)}), Bioquímica ({mediaBioquimica.toFixed(2)}), Fisiologia ({mediaFisiologia.toFixed(2)}), Histologia ({mediaHistologia.toFixed(2)}) e Módulo Integrador ({mediaIntegrador.toFixed(2)}).
                 </p>
               </div>
 
@@ -640,6 +642,63 @@ export const GradeCalculator: React.FC = () => {
                       placeholder="Max 0.5"
                       value={scores['HISTO_EXTRA']}
                       onChange={e => handleScoreChange('HISTO_EXTRA', e.target.value)}
+                      className="mt-1 h-9 text-xs"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Módulo Integrador (5ª disciplina da Média Geométrica) */}
+            <Card className="md:col-span-2 border-indigo-200/60 dark:border-indigo-900/40">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base text-indigo-600 dark:text-indigo-400">
+                    Módulo Integrador II (5ª componente da Média Geométrica)
+                  </CardTitle>
+                  <Badge variant="outline" className="text-xs font-bold font-mono">
+                    Média: {mediaIntegrador.toFixed(2)}
+                  </Badge>
+                </div>
+                <CardDescription>
+                  Média aritmética dos 2 Fóruns e do Caso Clínico
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Fórum 1</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      value={scores['INTEG_FORUM_1']}
+                      onChange={e => handleScoreChange('INTEG_FORUM_1', e.target.value)}
+                      className="mt-1 h-9 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Fórum 2</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      value={scores['INTEG_FORUM_2']}
+                      onChange={e => handleScoreChange('INTEG_FORUM_2', e.target.value)}
+                      className="mt-1 h-9 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Caso Clínico Integrador</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      value={scores['INTEG_CASO_CLINICO']}
+                      onChange={e => handleScoreChange('INTEG_CASO_CLINICO', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
