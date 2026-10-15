@@ -3,7 +3,24 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
-const dbPath = path.resolve(__dirname, 'medplanner.db');
+const isVercel = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+let dbPath;
+
+if (isVercel) {
+  const tmpDbPath = path.resolve('/tmp', 'medplanner.db');
+  const sourceDbPath = path.resolve(__dirname, 'medplanner.db');
+  if (!fs.existsSync(tmpDbPath) && fs.existsSync(sourceDbPath)) {
+    try {
+      fs.copyFileSync(sourceDbPath, tmpDbPath);
+    } catch (e) {
+      console.warn('Could not copy initial db to /tmp:', e.message);
+    }
+  }
+  dbPath = tmpDbPath;
+} else {
+  dbPath = path.resolve(__dirname, 'medplanner.db');
+}
+
 const db = new Database(dbPath);
 
 // Enable foreign keys

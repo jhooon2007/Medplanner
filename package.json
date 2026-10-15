@@ -4,10 +4,11 @@
   "description": "Med Planner by João - Plataforma Web Responsiva de Planejamento de Medicina 2026.2",
   "main": "server/index.js",
   "scripts": {
-    "dev": "concurrently -n \"API,WEB\" -c \"cyan,green\" \"node server/index.js\" \"npm.cmd --prefix client run dev\"",
+    "dev": "concurrently -n \"API,WEB\" -c \"cyan,green\" \"node server/index.js\" \"npm run --prefix client dev\"",
     "server": "node server/index.js",
-    "client": "npm.cmd --prefix client run dev",
-    "build": "npm.cmd --prefix client run build",
+    "client": "npm run --prefix client dev",
+    "build": "npm run --prefix client build",
+    "vercel-build": "npm --prefix client install && npm --prefix client run build",
     "start": "node server/index.js"
   },
   "keywords": [
@@ -19,7 +20,7 @@
     "tailwind",
     "shadcn"
   ],
-  "author": "João Gabriel",
+  "author": "João Victor",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {

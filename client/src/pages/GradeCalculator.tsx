@@ -14,20 +14,25 @@ export const GradeCalculator: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
 
-  // Grade state map
-  const [scores, setScores] = useState<Record<string, number | ''>>({
-    // CHS II: Anatomia
-    'ANA_N1_PROVA': 8.0,
-    'ANA_N1_PARTICIPACAO': 1.0,
-    'ANA_N2_PROVA': 7.5,
-    'ANA_N2_PARTICIPACAO': 1.0,
-    'ANA_N2_SEMINARIO': 1.5,
+  // Grade state map with LocalStorage persistence
+  const [scores, setScores] = useState<Record<string, number | ''>>(() => {
+    try {
+      const saved = localStorage.getItem('medplanner_grades')
+      if (saved) return JSON.parse(saved)
+    } catch (e) {}
+    return {
+      // CHS II: Anatomia
+      'ANA_N1_PROVA': 8.0,
+      'ANA_N1_PARTICIPACAO': 1.0,
+      'ANA_N2_PROVA': 7.5,
+      'ANA_N2_PARTICIPACAO': 1.0,
+      'ANA_N2_SEMINARIO': 1.5,
 
-    // CHS II: Bioquímica
-    'BIOQ_N1': 7.5,
-    'BIOQ_N2': 8.0,
-    'BIOQ_N3': 7.0,
-    'BIOQ_N4': 8.5,
+      // CHS II: Bioquímica
+      'BIOQ_N1': 7.5,
+      'BIOQ_N2': 8.0,
+      'BIOQ_N3': 7.0,
+      'BIOQ_N4': 8.5,
 
     // CHS II: Fisiologia
     'FISIO_A1': 7.5,
@@ -73,7 +78,8 @@ export const GradeCalculator: React.FC = () => {
 
     // IMC II Prova Final
     'IMC_PROVA_FINAL': '',
-  })
+  }
+})
 
   // Load existing grades from DB
   useEffect(() => {

@@ -843,9 +843,14 @@ if (fs.existsSync(clientDistPath)) {
   });
 }
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`Med Planner Backend rodando com sucesso na porta ${PORT}`);
-});
+// Start Server (only if not running inside a Vercel serverless environment)
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Med Planner Backend rodando com sucesso na porta ${PORT}`);
+  });
+}
+
+module.exports = app;
+
 
 
