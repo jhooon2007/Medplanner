@@ -22,9 +22,10 @@ export const LoginView: React.FC = () => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
 
   // Google OAuth real browser popup state
+  const GOOGLE_CLIENT_ID = '747330576714-3c4b3rn8su6cnklfroui5fkt663eeh92.apps.googleusercontent.com'
   const [googleConfigModalOpen, setGoogleConfigModalOpen] = useState(false)
   const [googleClientIdInput, setGoogleClientIdInput] = useState(() => {
-    return localStorage.getItem('medplanner_google_client_id') || ''
+    return localStorage.getItem('medplanner_google_client_id') || GOOGLE_CLIENT_ID
   })
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,7 +214,7 @@ export const LoginView: React.FC = () => {
 
   const handleGoogleClick = () => {
     setError(null)
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('medplanner_google_client_id')
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('medplanner_google_client_id') || GOOGLE_CLIENT_ID
     if (clientId) {
       triggerGoogleLogin(clientId)
     } else {
