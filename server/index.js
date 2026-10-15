@@ -831,8 +831,21 @@ app.delete('/api/subtopics/:id', authenticateToken, (req, res) => {
   }
 });
 
+// Serve static client bundle if it exists (for single-command production deploy)
+const clientDistPath = path.resolve(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`Med Planner Backend rodando com sucesso na porta ${PORT}`);
 });
+
 
