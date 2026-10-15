@@ -38,7 +38,7 @@ const MainApp: React.FC = () => {
       case 'materias':
         return <SemesterSubjects />
       case 'admin':
-        return <AdminDashboard />
+        return user?.role === 'admin' ? <AdminDashboard /> : <WeeklySchedule />
       default:
         return <WeeklySchedule />
     }

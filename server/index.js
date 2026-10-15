@@ -4,12 +4,13 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { db, initDatabase } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'med_planner_by_joao_secret_2026';
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test_jwt_secret' : crypto.randomBytes(32).toString('hex'));
 
 // Initialize Database
 initDatabase();
@@ -40,10 +41,11 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Apenas imagens são permitidas!'));
+      cb(new Error('Apenas imagens nos formatos JPEG, PNG ou WEBP são permitidas.'));
     }
   }
 });
@@ -360,7 +362,9 @@ app.put('/api/classes/:id', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Aula não encontrada.' });
     }
 
-    if (existing.user_id !== null && existing.user_id !== userId && req.user.role !== 'admin') {
+    const isOwner = existing.user_id === userId;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({ error: 'Sem permissão para alterar esta aula.' });
     }
 
@@ -388,7 +392,9 @@ app.delete('/api/classes/:id', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Aula não encontrada.' });
     }
 
-    if (existing.user_id !== null && existing.user_id !== userId && req.user.role !== 'admin') {
+    const isOwner = existing.user_id === userId;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({ error: 'Sem permissão para deletar esta aula.' });
     }
 
@@ -459,9 +465,10 @@ app.put('/api/events/:id', authenticateToken, (req, res) => {
     const userId = req.user.id;
     const { title, module_or_subject, start_date, end_date, type, topics } = req.body;
 
-    const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
-    if (!existing) {
-      return res.status(404).json({ error: 'Evento não encontrado.' });
+    const isOwner = existing.user_id === userId;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para alterar este evento.' });
     }
 
     const topicsJson = Array.isArray(topics) ? JSON.stringify(topics) : JSON.stringify([topics].filter(Boolean));
@@ -496,6 +503,12 @@ app.delete('/api/events/:id', authenticateToken, (req, res) => {
     const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
     if (!existing) {
       return res.status(404).json({ error: 'Evento não encontrado.' });
+    }
+
+    const isOwner = existing.user_id === userId;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para excluir este evento.' });
     }
 
     db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
@@ -709,6 +722,15 @@ app.put('/api/subjects/:id', authenticateToken, (req, res) => {
     const subjectId = parseInt(req.params.id);
     const { name, code, color, icon, description } = req.body;
 
+    const existing = db.prepare('SELECT * FROM subjects WHERE id = ?').get(subjectId);
+    if (!existing) return res.status(404).json({ error: 'Matéria não encontrada.' });
+
+    const isOwner = existing.user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para alterar esta matéria.' });
+    }
+
     db.prepare(`
       UPDATE subjects
       SET name = COALESCE(?, name),
@@ -730,6 +752,16 @@ app.put('/api/subjects/:id', authenticateToken, (req, res) => {
 app.delete('/api/subjects/:id', authenticateToken, (req, res) => {
   try {
     const subjectId = parseInt(req.params.id);
+
+    const existing = db.prepare('SELECT * FROM subjects WHERE id = ?').get(subjectId);
+    if (!existing) return res.status(404).json({ error: 'Matéria não encontrada.' });
+
+    const isOwner = existing.user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para excluir esta matéria.' });
+    }
+
     db.prepare('DELETE FROM subjects WHERE id = ?').run(subjectId);
     res.json({ message: 'Matéria removida com sucesso.' });
   } catch (err) {
@@ -765,6 +797,19 @@ app.put('/api/topics/:id', authenticateToken, (req, res) => {
     const topicId = parseInt(req.params.id);
     const { name } = req.body;
 
+    const topic = db.prepare(`
+      SELECT t.*, s.user_id FROM topics t
+      JOIN subjects s ON s.id = t.subject_id
+      WHERE t.id = ?
+    `).get(topicId);
+    if (!topic) return res.status(404).json({ error: 'Assunto não encontrado.' });
+
+    const isOwner = topic.user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para alterar este assunto.' });
+    }
+
     db.prepare('UPDATE topics SET name = ? WHERE id = ?').run(name, topicId);
     const updated = db.prepare('SELECT * FROM topics WHERE id = ?').get(topicId);
     res.json({ message: 'Assunto atualizado!', topic: updated });
@@ -777,6 +822,20 @@ app.put('/api/topics/:id', authenticateToken, (req, res) => {
 app.delete('/api/topics/:id', authenticateToken, (req, res) => {
   try {
     const topicId = parseInt(req.params.id);
+
+    const topic = db.prepare(`
+      SELECT t.*, s.user_id FROM topics t
+      JOIN subjects s ON s.id = t.subject_id
+      WHERE t.id = ?
+    `).get(topicId);
+    if (!topic) return res.status(404).json({ error: 'Assunto não encontrado.' });
+
+    const isOwner = topic.user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para excluir este assunto.' });
+    }
+
     db.prepare('DELETE FROM topics WHERE id = ?').run(topicId);
     res.json({ message: 'Assunto removido!' });
   } catch (err) {
@@ -792,6 +851,19 @@ app.post('/api/topics/:id/subtopics', authenticateToken, (req, res) => {
 
     if (!name) {
       return res.status(400).json({ error: 'Nome do subassunto é obrigatório.' });
+    }
+
+    const topic = db.prepare(`
+      SELECT t.*, s.user_id FROM topics t
+      JOIN subjects s ON s.id = t.subject_id
+      WHERE t.id = ?
+    `).get(topicId);
+    if (!topic) return res.status(404).json({ error: 'Assunto não encontrado.' });
+
+    const isOwner = topic.user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para adicionar subassunto neste assunto.' });
     }
 
     const result = db.prepare(`
@@ -812,6 +884,20 @@ app.put('/api/subtopics/:id', authenticateToken, (req, res) => {
     const subtopicId = parseInt(req.params.id);
     const { name } = req.body;
 
+    const subtopic = db.prepare(`
+      SELECT st.*, s.user_id FROM subtopics st
+      JOIN topics t ON t.id = st.topic_id
+      JOIN subjects s ON s.id = t.subject_id
+      WHERE st.id = ?
+    `).get(subtopicId);
+    if (!subtopic) return res.status(404).json({ error: 'Subassunto não encontrado.' });
+
+    const isOwner = subtopic.user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para alterar este subassunto.' });
+    }
+
     db.prepare('UPDATE subtopics SET name = ? WHERE id = ?').run(name, subtopicId);
     const updated = db.prepare('SELECT * FROM subtopics WHERE id = ?').get(subtopicId);
     res.json({ message: 'Subassunto atualizado!', subtopic: updated });
@@ -824,6 +910,21 @@ app.put('/api/subtopics/:id', authenticateToken, (req, res) => {
 app.delete('/api/subtopics/:id', authenticateToken, (req, res) => {
   try {
     const subtopicId = parseInt(req.params.id);
+
+    const subtopic = db.prepare(`
+      SELECT st.*, s.user_id FROM subtopics st
+      JOIN topics t ON t.id = st.topic_id
+      JOIN subjects s ON s.id = t.subject_id
+      WHERE st.id = ?
+    `).get(subtopicId);
+    if (!subtopic) return res.status(404).json({ error: 'Subassunto não encontrado.' });
+
+    const isOwner = subtopic.user_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para excluir este subassunto.' });
+    }
+
     db.prepare('DELETE FROM subtopics WHERE id = ?').run(subtopicId);
     res.json({ message: 'Subassunto removido!' });
   } catch (err) {
