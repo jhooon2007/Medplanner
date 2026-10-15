@@ -2,18 +2,18 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import { Semester } from '@/types'
 
 export const DEFAULT_SEMESTERS: Semester[] = [
-  { id: '1', number: 1, name: '1º Semestre', year_period: 'Ciclo Básico' },
-  { id: '2', number: 2, name: '2º Semestre', year_period: 'Ciclo Básico', is_current: true },
-  { id: '3', number: 3, name: '3º Semestre', year_period: 'Ciclo Clínico' },
-  { id: '4', number: 4, name: '4º Semestre', year_period: 'Ciclo Clínico' },
-  { id: '5', number: 5, name: '5º Semestre', year_period: 'Ciclo Clínico' },
-  { id: '6', number: 6, name: '6º Semestre', year_period: 'Ciclo Clínico' },
-  { id: '7', number: 7, name: '7º Semestre', year_period: 'Ciclo Clínico' },
-  { id: '8', number: 8, name: '8º Semestre', year_period: 'Ciclo Clínico' },
-  { id: '9', number: 9, name: '9º Semestre', year_period: 'Internato' },
-  { id: '10', number: 10, name: '10º Semestre', year_period: 'Internato' },
-  { id: '11', number: 11, name: '11º Semestre', year_period: 'Internato' },
-  { id: '12', number: 12, name: '12º Semestre', year_period: 'Internato' },
+  { id: '1', number: 1, name: '1º Semestre', year_period: 'Ciclo Básico • 1º Ano' },
+  { id: '2', number: 2, name: '2º Semestre', year_period: 'Ciclo Básico • 1º Ano', is_current: true },
+  { id: '3', number: 3, name: '3º Semestre', year_period: 'Ciclo Básico • 2º Ano' },
+  { id: '4', number: 4, name: '4º Semestre', year_period: 'Ciclo Básico • 2º Ano' },
+  { id: '5', number: 5, name: '5º Semestre', year_period: 'Ciclo Clínico • 3º Ano' },
+  { id: '6', number: 6, name: '6º Semestre', year_period: 'Ciclo Clínico • 3º Ano' },
+  { id: '7', number: 7, name: '7º Semestre', year_period: 'Ciclo Clínico • 4º Ano' },
+  { id: '8', number: 8, name: '8º Semestre', year_period: 'Ciclo Clínico • 4º Ano' },
+  { id: '9', number: 9, name: '9º Semestre', year_period: 'Internato • 5º Ano' },
+  { id: '10', number: 10, name: '10º Semestre', year_period: 'Internato • 5º Ano' },
+  { id: '11', number: 11, name: '11º Semestre', year_period: 'Internato • 6º Ano' },
+  { id: '12', number: 12, name: '12º Semestre', year_period: 'Internato • 6º Ano' },
 ]
 
 interface SemesterContextType {
@@ -31,7 +31,14 @@ export const SemesterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [semesters, setSemesters] = useState<Semester[]>(() => {
     try {
       const saved = localStorage.getItem('medplanner_semesters')
-      if (saved) return JSON.parse(saved)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // Refresh cycle mapping if older cached version has 3º or 4º as Ciclo Clínico
+        if (parsed.some((s: any) => (s.number === 3 || s.number === 4) && s.year_period?.includes('Clínico'))) {
+          return DEFAULT_SEMESTERS
+        }
+        return parsed
+      }
     } catch (e) {}
     return DEFAULT_SEMESTERS
   })
