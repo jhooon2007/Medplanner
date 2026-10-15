@@ -373,12 +373,14 @@ export const ImportantEvents: React.FC = () => {
                   {/* Left Section: Date Badge & Title/Module */}
                   <div className="flex items-start sm:items-center gap-3.5 flex-1 min-w-0">
                     {/* Date Block */}
-                    <div className="h-14 w-14 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex flex-col items-center justify-center shrink-0">
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div className="h-14 min-w-[3.5rem] px-2 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex flex-col items-center justify-center shrink-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         {new Date(event.start_date + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
                       </span>
-                      <span className="text-base font-extrabold text-slate-900 dark:text-white font-mono leading-none mt-0.5">
-                        {event.start_date.split('-')[2]}
+                      <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white font-mono leading-none mt-0.5 whitespace-nowrap">
+                        {event.end_date
+                          ? `${event.start_date.split('-')[2]}-${event.end_date.split('-')[2]}`
+                          : event.start_date.split('-')[2]}
                       </span>
                     </div>
 
@@ -390,9 +392,6 @@ export const ImportantEvents: React.FC = () => {
                         <Badge variant="secondary" className="text-[11px] py-0 px-2">
                           {event.type}
                         </Badge>
-                        <span className="text-xs text-slate-400">
-                          {formatDates(event.start_date, event.end_date)}
-                        </span>
                       </div>
 
                       <h3 className="font-bold text-base text-slate-900 dark:text-slate-100 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">

@@ -18,13 +18,21 @@ export const GradeCalculator: React.FC = () => {
   const [scores, setScores] = useState<Record<string, number | ''>>(() => {
     try {
       const saved = localStorage.getItem('medplanner_grades')
-      if (saved) return JSON.parse(saved)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed['ANA_N2_PROVA'] !== undefined && parsed['ANA_N2_TEORICA'] === undefined) {
+          parsed['ANA_N2_TEORICA'] = parsed['ANA_N2_PROVA']
+          parsed['ANA_N2_PRATICA'] = parsed['ANA_N2_PROVA']
+        }
+        return parsed
+      }
     } catch (e) {}
     return {
       // CHS II: Anatomia
       'ANA_N1_PROVA': 8.0,
       'ANA_N1_PARTICIPACAO': 1.0,
-      'ANA_N2_PROVA': 7.5,
+      'ANA_N2_TEORICA': 7.5,
+      'ANA_N2_PRATICA': 8.0,
       'ANA_N2_PARTICIPACAO': 1.0,
       'ANA_N2_SEMINARIO': 1.5,
 
@@ -112,6 +120,13 @@ export const GradeCalculator: React.FC = () => {
     loadGrades()
   }, [token])
 
+  // Auto-sync scores with localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('medplanner_grades', JSON.stringify(scores))
+    } catch (e) {}
+  }, [scores])
+
   const handleScoreChange = (key: string, val: string) => {
     const num = val === '' ? '' : parseFloat(val)
     setScores(prev => ({ ...prev, [key]: num }))
@@ -126,7 +141,16 @@ export const GradeCalculator: React.FC = () => {
 
   // CHS II
   const anaN1 = Math.min(10, getVal('ANA_N1_PROVA') + getVal('ANA_N1_PARTICIPACAO'))
-  const anaN2 = Math.min(10, getVal('ANA_N2_PROVA') + getVal('ANA_N2_PARTICIPACAO') + getVal('ANA_N2_SEMINARIO'))
+  
+  // N2 Anatomia: Prova Teórica e Prova Prática separadas (com fallback suave para ANA_N2_PROVA se existente)
+  const anaN2Teorica = scores['ANA_N2_TEORICA'] !== undefined && scores['ANA_N2_TEORICA'] !== ''
+    ? getVal('ANA_N2_TEORICA')
+    : getVal('ANA_N2_PROVA', 7.5)
+  const anaN2Pratica = scores['ANA_N2_PRATICA'] !== undefined && scores['ANA_N2_PRATICA'] !== ''
+    ? getVal('ANA_N2_PRATICA')
+    : getVal('ANA_N2_PROVA', 7.5)
+  const anaN2MediaProvas = (anaN2Teorica + anaN2Pratica) / 2
+  const anaN2 = Math.min(10, anaN2MediaProvas + getVal('ANA_N2_PARTICIPACAO') + getVal('ANA_N2_SEMINARIO'))
   const mediaAnatomia = (anaN1 + anaN2) / 2
   const mediaBioquimica = (getVal('BIOQ_N1') + getVal('BIOQ_N2') + getVal('BIOQ_N3') + getVal('BIOQ_N4')) / 4
   const mediaFisiologia = (getVal('FISIO_A1') * 3.5 + getVal('FISIO_A2') * 4.0 + getVal('FISIO_A3') * 2.5) / 10
@@ -307,13 +331,13 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média = (N1 + N2) / 2 • N1 (Prova + Part) e N2 (Prova + Part + Sem)
+                  Média = (N1 + N2) / 2 • N1 (Prova Única + Part.) e N2 (Teórica + Prática + Part. + Sem.)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1 Prova</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1 Prova (Teór-Prát)</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -341,16 +365,28 @@ export const GradeCalculator: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 Prova</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 Teórica</label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['ANA_N2_PROVA']}
-                      onChange={e => handleScoreChange('ANA_N2_PROVA', e.target.value)}
+                      value={scores['ANA_N2_TEORICA'] ?? scores['ANA_N2_PROVA'] ?? ''}
+                      onChange={e => handleScoreChange('ANA_N2_TEORICA', e.target.value)}
+                      className="mt-1 h-9 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 Prática</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      value={scores['ANA_N2_PRATICA'] ?? scores['ANA_N2_PROVA'] ?? ''}
+                      onChange={e => handleScoreChange('ANA_N2_PRATICA', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
@@ -378,7 +414,7 @@ export const GradeCalculator: React.FC = () => {
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
-                  <div className="col-span-3 text-[11px] text-slate-400 text-right">
+                  <div className="col-span-2 sm:col-span-4 text-[11px] text-slate-400 text-right">
                     Subtotal N2: <span className="font-semibold text-slate-700 dark:text-slate-300">{anaN2.toFixed(1)}</span>
                   </div>
                 </div>
