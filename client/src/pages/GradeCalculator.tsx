@@ -20,10 +20,6 @@ export const GradeCalculator: React.FC = () => {
       const saved = localStorage.getItem('medplanner_grades')
       if (saved) {
         const parsed = JSON.parse(saved)
-        if (parsed['ANA_N2_PROVA'] !== undefined && parsed['ANA_N2_TEORICA'] === undefined) {
-          parsed['ANA_N2_TEORICA'] = parsed['ANA_N2_PROVA']
-          parsed['ANA_N2_PRATICA'] = parsed['ANA_N2_PROVA']
-        }
         return parsed
       }
     } catch (e) {}
@@ -31,10 +27,10 @@ export const GradeCalculator: React.FC = () => {
       // CHS II: Anatomia
       'ANA_N1_PROVA': 8.0,
       'ANA_N1_PARTICIPACAO': 1.0,
-      'ANA_N2_TEORICA': 7.5,
-      'ANA_N2_PRATICA': 8.0,
+      'ANA_N2_TEORICA': 8.0,
+      'ANA_N2_PRATICA': 6.5,
       'ANA_N2_PARTICIPACAO': 1.0,
-      'ANA_N2_SEMINARIO': 1.5,
+      'ANA_N2_SEMINARIO': 1.0,
 
       // CHS II: Bioquímica
       'BIOQ_N1': 7.5,
@@ -142,15 +138,9 @@ export const GradeCalculator: React.FC = () => {
   // CHS II
   const anaN1 = Math.min(10, getVal('ANA_N1_PROVA') + getVal('ANA_N1_PARTICIPACAO'))
   
-  // N2 Anatomia: Prova Teórica e Prova Prática separadas (com fallback suave para ANA_N2_PROVA se existente)
-  const anaN2Teorica = scores['ANA_N2_TEORICA'] !== undefined && scores['ANA_N2_TEORICA'] !== ''
-    ? getVal('ANA_N2_TEORICA')
-    : getVal('ANA_N2_PROVA', 7.5)
-  const anaN2Pratica = scores['ANA_N2_PRATICA'] !== undefined && scores['ANA_N2_PRATICA'] !== ''
-    ? getVal('ANA_N2_PRATICA')
-    : getVal('ANA_N2_PROVA', 7.5)
-  const anaN2MediaProvas = (anaN2Teorica + anaN2Pratica) / 2
-  const anaN2 = Math.min(10, anaN2MediaProvas + getVal('ANA_N2_PARTICIPACAO') + getVal('ANA_N2_SEMINARIO'))
+  // N2 Anatomia: Teórica (0-10) e Prática (prova 8 + participação 1 + seminário 1 = 10), média simples entre as duas
+  const anaN2Pratica = Math.min(10, getVal('ANA_N2_PRATICA') + getVal('ANA_N2_PARTICIPACAO') + getVal('ANA_N2_SEMINARIO'))
+  const anaN2 = (getVal('ANA_N2_TEORICA') + anaN2Pratica) / 2
   const mediaAnatomia = (anaN1 + anaN2) / 2
   const mediaBioquimica = (getVal('BIOQ_N1') + getVal('BIOQ_N2') + getVal('BIOQ_N3') + getVal('BIOQ_N4')) / 4
   const mediaFisiologia = (getVal('FISIO_A1') * 3.5 + getVal('FISIO_A2') * 4.0 + getVal('FISIO_A3') * 2.5) / 10
@@ -331,7 +321,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média = (N1 + N2) / 2 • N1 (Prova Única + Part.) e N2 (Teórica + Prática + Part. + Sem.)
+                  Média = (N1 + N2) / 2 • N1 (Prova Única + Part.) e N2 = (Teórica [10] + Prática [prova 8 + part. 1 + sem. 1]) / 2
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -373,42 +363,42 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['ANA_N2_TEORICA'] ?? scores['ANA_N2_PROVA'] ?? ''}
+                      value={scores['ANA_N2_TEORICA']}
                       onChange={e => handleScoreChange('ANA_N2_TEORICA', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 Prática</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 Prática (prova, máx 8)</label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
-                      max="10"
-                      value={scores['ANA_N2_PRATICA'] ?? scores['ANA_N2_PROVA'] ?? ''}
+                      max="8"
+                      value={scores['ANA_N2_PRATICA']}
                       onChange={e => handleScoreChange('ANA_N2_PRATICA', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 Part.</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 Part. (máx 1)</label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
-                      max="10"
+                      max="1"
                       value={scores['ANA_N2_PARTICIPACAO']}
                       onChange={e => handleScoreChange('ANA_N2_PARTICIPACAO', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Seminário</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Seminário (máx 1)</label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
-                      max="10"
+                      max="1"
                       value={scores['ANA_N2_SEMINARIO']}
                       onChange={e => handleScoreChange('ANA_N2_SEMINARIO', e.target.value)}
                       className="mt-1 h-9 text-xs"
