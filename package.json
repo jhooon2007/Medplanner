@@ -7,8 +7,8 @@
     "dev": "concurrently -n \"API,WEB\" -c \"cyan,green\" \"node server/index.js\" \"npm run --prefix client dev\"",
     "server": "node server/index.js",
     "client": "npm run --prefix client dev",
-    "build": "npm run --prefix client build",
-    "vercel-build": "npm --prefix client install && npm --prefix client run build",
+    "build": "npm --prefix client install && npm --prefix client run build && node -e \"const fs=require('fs'); if(!fs.existsSync('dist')){fs.mkdirSync('dist',{recursive:true}); fs.cpSync('client/dist', 'dist', {recursive:true});}\"",
+    "vercel-build": "npm --prefix client install && npm --prefix client run build && node -e \"const fs=require('fs'); if(!fs.existsSync('dist')){fs.mkdirSync('dist',{recursive:true}); fs.cpSync('client/dist', 'dist', {recursive:true});}\"",
     "start": "node server/index.js"
   },
   "keywords": [
