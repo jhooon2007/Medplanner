@@ -156,10 +156,22 @@ function seedInitialData() {
     db.prepare(`
       INSERT INTO users (name, email, password, phone, role)
       VALUES (?, ?, ?, ?, ?)
-    `).run('Administrador', adminEmail, adminHash, '(62) 98888-0000', 'admin');
+    `).run('Administrador UFG', adminEmail, adminHash, '(62) 98888-0000', 'admin');
     console.log(`Admin account initialized (${adminEmail}).`);
   } else {
-    db.prepare(`UPDATE users SET password = ?, role = 'admin' WHERE id = ?`).run(adminHash, existingAdmin.id);
+    db.prepare(`UPDATE users SET password = ?, role = 'admin', name = 'Administrador UFG' WHERE id = ?`).run(adminHash, existingAdmin.id);
+  }
+
+  // Ensure real student account for João Victor exists
+  const jvEmail = 'jvictor8573@gmail.com';
+  const existingJv = db.prepare(`SELECT id FROM users WHERE email = ?`).get(jvEmail);
+  if (!existingJv) {
+    const studentHash = bcrypt.hashSync('Medicina#2026', salt);
+    db.prepare(`
+      INSERT INTO users (name, email, password, phone, role)
+      VALUES (?, ?, ?, ?, 'student')
+    `).run('João Victor', jvEmail, studentHash, '(62) 99999-0000');
+    console.log(`Student account initialized (${jvEmail}).`);
   }
 
   // Pre-seed Subjects if empty

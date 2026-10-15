@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Stethoscope, Upload, AlertCircle, Sun, Moon, ShieldCheck, Sparkles, CheckCircle2, UserPlus, ArrowLeft, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/Dialog'
 import { cn } from '@/lib/utils'
+import { saveRegisteredUserLocally } from '@/lib/userStore'
 
 export const LoginView: React.FC = () => {
   const { login, isDark, toggleTheme } = useAuth()
@@ -63,6 +64,7 @@ export const LoginView: React.FC = () => {
           try { data = text ? JSON.parse(text) : {} } catch (e) {}
 
           if (res.ok && data.token && data.user) {
+            saveRegisteredUserLocally(data.user)
             login(data.token, data.user)
             registered = true
           } else if (data.error) {
@@ -84,6 +86,7 @@ export const LoginView: React.FC = () => {
             photo_url: photoPreview || null,
             role: 'student' as const,
           }
+          saveRegisteredUserLocally(localUser)
           login('local-token-' + Date.now(), localUser)
         }
       } else {
@@ -182,15 +185,25 @@ export const LoginView: React.FC = () => {
                 }
 
                 // Sync with server if online
+                let serverToken = 'google-token-' + Date.now()
                 try {
-                  await fetch('/api/auth/google', {
+                  const gRes = await fetch('/api/auth/google', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(realUser)
                   })
+                  if (gRes.ok) {
+                    const text = await gRes.text()
+                    try {
+                      const gData = JSON.parse(text)
+                      if (gData.token) serverToken = gData.token
+                      if (gData.user) Object.assign(realUser, gData.user)
+                    } catch (e) {}
+                  }
                 } catch (e) {}
 
-                login('google-token-' + Date.now(), realUser)
+                saveRegisteredUserLocally(realUser)
+                login(serverToken, realUser)
               } catch (err: any) {
                 setError(err.message || 'Erro ao carregar dados da conta Google.')
               } finally {

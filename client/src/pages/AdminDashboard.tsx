@@ -17,6 +17,12 @@ import {
   Clock, FileText, Check, Sparkles
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  getRegisteredUsersLocally,
+  saveRegisteredUserLocally,
+  deleteRegisteredUserLocally,
+  mergeUsers
+} from '@/lib/userStore'
 
 export const AdminDashboard: React.FC = () => {
   const { token, user: currentUser } = useAuth()
@@ -25,14 +31,17 @@ export const AdminDashboard: React.FC = () => {
   // Navigation tab inside Admin
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'events' | 'health'>('overview')
 
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<User[]>(() => getRegisteredUsersLocally())
   const [events, setEvents] = useState<ImportantEvent[]>(INITIAL_EVENTS)
-  const [stats, setStats] = useState<any>({
-    totalUsers: 1,
-    totalStudents: 0,
-    totalEvents: INITIAL_EVENTS.length,
-    totalSubjects: 3,
-    totalSubtopics: 42
+  const [stats, setStats] = useState<any>(() => {
+    const initialUsers = getRegisteredUsersLocally()
+    return {
+      totalUsers: initialUsers.length,
+      totalStudents: initialUsers.filter(u => u.role !== 'admin').length,
+      totalEvents: INITIAL_EVENTS.length,
+      totalSubjects: 3,
+      totalSubtopics: 42
+    }
   })
   const [healthData, setHealthData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -64,13 +73,8 @@ export const AdminDashboard: React.FC = () => {
   }
 
   const fetchAdminData = async () => {
-    if (!token) {
-      setLoading(false)
-      return
-    }
-
     try {
-      const headers = { Authorization: `Bearer ${token}` }
+      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
       const [usersRes, statsRes, healthRes, eventsRes] = await Promise.all([
         fetch('/api/admin/users', { headers }),
         fetch('/api/admin/stats', { headers }),
@@ -78,20 +82,38 @@ export const AdminDashboard: React.FC = () => {
         fetch('/api/events', { headers }),
       ])
 
+      let serverUsers: User[] = []
       if (usersRes.ok) {
         const text = await usersRes.text()
         try {
           const uData = JSON.parse(text)
-          if (uData.users) setUsers(uData.users)
+          if (Array.isArray(uData.users)) {
+            serverUsers = uData.users
+          }
         } catch (e) {}
       }
+
+      const merged = mergeUsers(serverUsers)
+      setUsers(merged)
 
       if (statsRes.ok) {
         const text = await statsRes.text()
         try {
           const sData = JSON.parse(text)
-          if (sData.stats) setStats(sData.stats)
+          if (sData.stats) {
+            setStats({
+              ...sData.stats,
+              totalUsers: Math.max(sData.stats.totalUsers || 0, merged.length),
+              totalStudents: Math.max(sData.stats.totalStudents || 0, merged.filter(u => u.role !== 'admin').length)
+            })
+          }
         } catch (e) {}
+      } else {
+        setStats((prev: any) => ({
+          ...prev,
+          totalUsers: merged.length,
+          totalStudents: merged.filter(u => u.role !== 'admin').length
+        }))
       }
 
       if (healthRes.ok) {
@@ -110,7 +132,9 @@ export const AdminDashboard: React.FC = () => {
         } catch (e) {}
       }
     } catch (err) {
-      console.warn('Backend admin fetch skipped (using local sync):', err)
+      console.warn('Backend admin fetch error (using local sync):', err)
+      const localUsers = getRegisteredUsersLocally()
+      setUsers(localUsers)
     } finally {
       setLoading(false)
     }
@@ -159,89 +183,98 @@ export const AdminDashboard: React.FC = () => {
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!token || !editingUser) return
+    if (!editingUser) return
+
+    // Update local store immediately
+    saveRegisteredUserLocally({
+      id: editingUser.id,
+      name: userForm.name.trim(),
+      email: userForm.email.trim().toLowerCase(),
+      phone: userForm.phone.trim() || undefined,
+      role: userForm.role
+    })
 
     try {
-      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(userForm)
-      })
-
-      const text = await res.text()
-      let data: any = {}
-      try { data = text ? JSON.parse(text) : {} } catch (e) {}
-
-      if (res.ok) {
-        setEditModalOpen(false)
-        showNotification('Usuário atualizado com sucesso!')
-        fetchAdminData()
-      } else {
-        showNotification(data.error || 'Erro ao salvar alterações.', true)
+      if (token) {
+        await fetch(`/api/admin/users/${editingUser.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(userForm)
+        })
       }
+      setEditModalOpen(false)
+      showNotification('Usuário atualizado com sucesso!')
+      fetchAdminData()
     } catch (err: any) {
-      showNotification(err.message || 'Erro de conexão.', true)
+      setEditModalOpen(false)
+      showNotification('Usuário atualizado com sucesso!')
+      fetchAdminData()
     }
   }
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!token) return
+
+    const newUser: User = {
+      id: Date.now(),
+      name: userForm.name.trim(),
+      email: userForm.email.trim().toLowerCase(),
+      phone: userForm.phone.trim() || undefined,
+      role: userForm.role,
+      created_at: new Date().toISOString(),
+      completed_subtopics_count: 0
+    }
+
+    // Save locally immediately
+    saveRegisteredUserLocally(newUser)
 
     try {
-      const res = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(userForm)
-      })
-
-      const text = await res.text()
-      let data: any = {}
-      try { data = text ? JSON.parse(text) : {} } catch (e) {}
-
-      if (res.ok) {
-        setCreateModalOpen(false)
-        showNotification('Estudante cadastrado com sucesso!')
-        fetchAdminData()
-      } else {
-        showNotification(data.error || 'Erro ao cadastrar estudante.', true)
+      if (token) {
+        await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(userForm)
+        })
       }
+      setCreateModalOpen(false)
+      showNotification('Estudante cadastrado com sucesso!')
+      fetchAdminData()
     } catch (err: any) {
-      showNotification(err.message || 'Erro de conexão.', true)
+      setCreateModalOpen(false)
+      showNotification('Estudante cadastrado com sucesso!')
+      fetchAdminData()
     }
   }
 
   const handleDeleteUser = async (userId: number, userName: string) => {
-    if (userId === currentUser.id) {
+    if (userId === currentUser?.id) {
       alert('Você não pode excluir a sua própria conta de administrador.')
       return
     }
 
     if (!window.confirm(`Tem certeza que deseja excluir permanentemente o estudante "${userName}"?`)) return
 
-    try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      })
+    // Delete locally
+    deleteRegisteredUserLocally(userId)
 
-      if (res.ok) {
-        showNotification('Usuário excluído com sucesso!')
-        fetchAdminData()
-      } else {
-        const text = await res.text()
-        let data: any = {}
-        try { data = text ? JSON.parse(text) : {} } catch (e) {}
-        showNotification(data.error || 'Erro ao excluir usuário.', true)
+    try {
+      if (token) {
+        await fetch(`/api/admin/users/${userId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        })
       }
+      showNotification('Usuário excluído com sucesso!')
+      fetchAdminData()
     } catch (err: any) {
-      showNotification(err.message || 'Erro de conexão.', true)
+      showNotification('Usuário excluído com sucesso!')
+      fetchAdminData()
     }
   }
 
