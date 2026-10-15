@@ -529,32 +529,34 @@ function seedInitialData() {
     console.log('Pre-registered Events 2026.2 successfully inserted!');
   }
 
-  // Pre-seed Weekly Schedule (Aba 1) for default classes if empty
-  const classCount = db.prepare(`SELECT count(*) as count FROM classes WHERE user_id IS NULL`).get().count;
-  if (classCount === 0) {
+  // Pre-seed Weekly Schedule (Aba 1): substitui as aulas padrão antigas pelo horário real (uma única vez)
+  const hasRealSchedule = db.prepare(`SELECT count(*) as count FROM classes WHERE user_id IS NULL AND subject_name = 'Semiologia'`).get().count;
+  if (hasRealSchedule === 0) {
     console.log('Seeding Pre-registered Weekly Schedule (Aba 1)...');
+    db.prepare(`DELETE FROM classes WHERE user_id IS NULL`).run();
 
+    const CAA = 'Centro de Aulas Aroeira - CAA - UFG';
+    const ICB3 = 'Instituto de Ciências Biológicas III';
+    const FM = 'Faculdade de Medicina - FM/UFG';
     const defaultClasses = [
-      // Segunda-feira (day_of_week = 1)
-      { day: 1, start: '08:00', end: '10:00', subject: 'Anatomia Humana (Teórica)', room: 'Anfiteatro B', teacher: 'Prof. Anatomia', type: 'Teórica', color: 'blue' },
-      { day: 1, start: '10:00', end: '12:00', subject: 'Anatomia Humana (Prática)', room: 'Laboratório de Anatomia', teacher: 'Prof. Anatomia', type: 'Prática', color: 'blue' },
-      { day: 1, start: '14:00', end: '18:00', subject: 'Histologia e Embriologia', room: 'Lab. Microscopia 02', teacher: 'Prof. Histologia', type: 'Prática', color: 'emerald' },
-
-      // Terça-feira (day_of_week = 2)
-      { day: 2, start: '08:00', end: '12:00', subject: 'Bioquímica Médica', room: 'Sala 204 - Bloco ICB', teacher: 'Prof. Bioquímica', type: 'Teórica', color: 'purple' },
-      { day: 2, start: '14:00', end: '18:00', subject: 'Método Clínico II (Role Play)', room: 'Ambulatório Escola', teacher: 'Preceptores IMC', type: 'Prática', color: 'amber' },
-
-      // Quarta-feira (day_of_week = 3)
-      { day: 3, start: '08:00', end: '12:00', subject: 'Fisiologia Humana', room: 'Sala 102 - Fisiologia', teacher: 'Prof. Fisiologia', type: 'Teórica', color: 'rose' },
-      { day: 3, start: '14:00', end: '18:00', subject: 'Anatomia Humana (Dissecação)', room: 'Laboratório de Anatomia', teacher: 'Prof. Anatomia', type: 'Prática', color: 'blue' },
-
-      // Quinta-feira (day_of_week = 4)
-      { day: 4, start: '08:00', end: '12:00', subject: 'Método Clínico II (TBL)', room: 'Sala Ativa 01', teacher: 'Docentes IMC', type: 'TBL', color: 'amber' },
-      { day: 4, start: '14:00', end: '17:00', subject: 'Fisiologia Humana (Discussão de Casos)', room: 'Sala 102', teacher: 'Prof. Fisiologia', type: 'Seminário', color: 'rose' },
-
-      // Sexta-feira (day_of_week = 5)
-      { day: 5, start: '08:00', end: '12:00', subject: 'Módulo Integrador II (Fóruns e Casos)', room: 'Auditório Central', teacher: 'Coordenação Integrador', type: 'Teórica', color: 'teal' },
-      { day: 5, start: '14:00', end: '17:00', subject: 'Bioquímica (Estudo Dirigido e Casos)', room: 'Sala 204', teacher: 'Prof. Bioquímica', type: 'Prática', color: 'purple' }
+      // Segunda-feira
+      { day: 1, start: '08:00', end: '09:40', subject: 'Fisiologia', room: `CAA 107 • ${CAA}`, type: 'Teórica', color: 'emerald' },
+      { day: 1, start: '10:00', end: '11:40', subject: 'Histologia', room: `ICB3 Auditório • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+      { day: 1, start: '11:40', end: '12:30', subject: 'Anatomia', room: `ICB3 Auditório • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+      { day: 1, start: '14:00', end: '17:40', subject: 'SFC', room: '', type: 'Teórica', color: 'amber' },
+      // Terça-feira
+      { day: 2, start: '08:00', end: '09:40', subject: 'Bioquímica', room: `CAB 107 • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+      { day: 2, start: '10:00', end: '11:40', subject: 'Histologia', room: `ICB3 Lab. 204 • ${ICB3}`, type: 'Prática', color: 'emerald' },
+      { day: 2, start: '13:10', end: '17:40', subject: 'Anatomia', room: `ICB3 Lab. 2 • ${ICB3}`, type: 'Prática', color: 'emerald' },
+      // Quarta-feira
+      { day: 3, start: '07:10', end: '09:40', subject: 'Fisiologia', room: 'CAA 107', type: 'Teórica', color: 'emerald' },
+      // Quinta-feira
+      { day: 4, start: '08:00', end: '09:40', subject: 'Bioquímica', room: `CAB 107 • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+      { day: 4, start: '10:00', end: '11:40', subject: 'Histologia', room: `ICB3 Lab. 204 • ${ICB3}`, type: 'Prática', color: 'emerald' },
+      // Sexta-feira
+      { day: 5, start: '07:10', end: '08:50', subject: 'Imagenologia', room: FM, type: 'Teórica', color: 'amber' },
+      { day: 5, start: '08:50', end: '11:40', subject: 'Semiologia', room: FM, type: 'Teórica', color: 'amber' },
+      { day: 5, start: '14:00', end: '18:30', subject: 'IMC', room: FM, type: 'Prática', color: 'amber' }
     ];
 
     const insertClass = db.prepare(`
@@ -564,7 +566,7 @@ function seedInitialData() {
 
     const tx = db.transaction(() => {
       defaultClasses.forEach(c => {
-        insertClass.run(c.day, c.start, c.end, c.subject, c.room, c.teacher, c.type, c.color);
+        insertClass.run(c.day, c.start, c.end, c.subject, c.room, null, c.type, c.color);
       });
     });
 

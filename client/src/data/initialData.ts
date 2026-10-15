@@ -529,23 +529,28 @@ export const INITIAL_EVENTS: ImportantEvent[] = [
   }
 ]
 
+const CAA = 'Centro de Aulas Aroeira - CAA - UFG'
+const ICB3 = 'Instituto de Ciências Biológicas III'
+const FM = 'Faculdade de Medicina - FM/UFG'
+
+// Horários conforme Google Agenda (seg-sex)
 export const INITIAL_CLASSES: ClassItem[] = [
   // Segunda-feira
-  { id: 1, day_of_week: 1, start_time: '08:00', end_time: '10:00', subject_name: 'Anatomia Humana (Teórica)', room: 'Anfiteatro A - Bloco da Saúde', teacher: 'Prof. Coordenador de Anatomia', type: 'Teórica', color: 'blue' },
-  { id: 2, day_of_week: 1, start_time: '10:15', end_time: '12:00', subject_name: 'Fisiologia Humana (Cardiovascular)', room: 'Sala 102 - Fmed', teacher: 'Prof. de Fisiologia', type: 'Teórica', color: 'rose' },
-  { id: 3, day_of_week: 1, start_time: '14:00', end_time: '17:00', subject_name: 'Anatomia Prática (Dissecação)', room: 'Laboratório de Anatomia', teacher: 'Equipe de Anatomia', type: 'Prática', color: 'blue' },
+  { id: 1, day_of_week: 1, start_time: '08:00', end_time: '09:40', subject_name: 'Fisiologia', room: `CAA 107 • ${CAA}`, type: 'Teórica', color: 'emerald' },
+  { id: 2, day_of_week: 1, start_time: '10:00', end_time: '11:40', subject_name: 'Histologia', room: `ICB3 Auditório • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+  { id: 3, day_of_week: 1, start_time: '11:40', end_time: '12:30', subject_name: 'Anatomia', room: `ICB3 Auditório • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+  { id: 4, day_of_week: 1, start_time: '14:00', end_time: '17:40', subject_name: 'SFC', type: 'Teórica', color: 'amber' },
   // Terça-feira
-  { id: 4, day_of_week: 2, start_time: '08:00', end_time: '10:00', subject_name: 'Bioquímica Metabólica', room: 'Sala 204', teacher: 'Prof. de Bioquímica', type: 'Teórica', color: 'purple' },
-  { id: 5, day_of_week: 2, start_time: '10:15', end_time: '12:00', subject_name: 'Histologia e Embriologia', room: 'Sala 204', teacher: 'Prof. de Histologia', type: 'Teórica', color: 'amber' },
-  { id: 6, day_of_week: 2, start_time: '14:00', end_time: '17:00', subject_name: 'Método Clínico II (Role Play)', room: 'Laboratório de Habilidades Clínicas', teacher: 'Preceptores de Clínica', type: 'Prática', color: 'emerald' },
+  { id: 5, day_of_week: 2, start_time: '08:00', end_time: '09:40', subject_name: 'Bioquímica', room: `CAB 107 • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+  { id: 6, day_of_week: 2, start_time: '10:00', end_time: '11:40', subject_name: 'Histologia', room: `ICB3 Lab. 204 • ${ICB3}`, type: 'Prática', color: 'emerald' },
+  { id: 7, day_of_week: 2, start_time: '13:10', end_time: '17:40', subject_name: 'Anatomia', room: `ICB3 Lab. 2 • ${ICB3}`, type: 'Prática', color: 'emerald' },
   // Quarta-feira
-  { id: 7, day_of_week: 3, start_time: '08:00', end_time: '10:00', subject_name: 'Módulo Integrador II', room: 'Anfiteatro B', teacher: 'Coordenação Interdisciplinar', type: 'Seminário', color: 'indigo' },
-  { id: 8, day_of_week: 3, start_time: '10:15', end_time: '12:00', subject_name: 'Fisiologia Respiratória', room: 'Sala 102', teacher: 'Prof. de Fisiologia', type: 'Teórica', color: 'rose' },
-  { id: 9, day_of_week: 3, start_time: '14:00', end_time: '16:00', subject_name: 'Histologia Prática (Microscopia)', room: 'Laboratório Multidisciplinar', teacher: 'Equipe de Histologia', type: 'Laboratório', color: 'amber' },
+  { id: 8, day_of_week: 3, start_time: '07:10', end_time: '09:40', subject_name: 'Fisiologia', room: 'CAA 107', type: 'Teórica', color: 'emerald' },
   // Quinta-feira
-  { id: 10, day_of_week: 4, start_time: '08:00', end_time: '11:00', subject_name: 'TBL - Método Clínico II', room: 'Sala de Metodologias Ativas', teacher: 'Equipe de IMC II', type: 'TBL', color: 'emerald' },
-  { id: 11, day_of_week: 4, start_time: '14:00', end_time: '16:00', subject_name: 'Imagenologia Médica', room: 'Anfiteatro Radiologia', teacher: 'Prof. de Diagnóstico por Imagem', type: 'Teórica', color: 'cyan' },
+  { id: 9, day_of_week: 4, start_time: '08:00', end_time: '09:40', subject_name: 'Bioquímica', room: `CAB 107 • ${ICB3}`, type: 'Teórica', color: 'emerald' },
+  { id: 10, day_of_week: 4, start_time: '10:00', end_time: '11:40', subject_name: 'Histologia', room: `ICB3 Lab. 204 • ${ICB3}`, type: 'Prática', color: 'emerald' },
   // Sexta-feira
-  { id: 12, day_of_week: 5, start_time: '08:00', end_time: '11:00', subject_name: 'História Clínica (HC) no Ambulatório', room: 'Hospital das Clínicas / Ambulatório', teacher: 'Médicos Preceptores', type: 'Prática', color: 'emerald' },
-  { id: 13, day_of_week: 5, start_time: '14:00', end_time: '16:00', subject_name: 'Estudo Dirigido e Monitoria', room: 'Biblioteca / Sala de Estudos', teacher: 'Monitores Acadêmicos', type: 'Teórica', color: 'blue' }
+  { id: 11, day_of_week: 5, start_time: '07:10', end_time: '08:50', subject_name: 'Imagenologia', room: FM, type: 'Teórica', color: 'amber' },
+  { id: 12, day_of_week: 5, start_time: '08:50', end_time: '11:40', subject_name: 'Semiologia', room: FM, type: 'Teórica', color: 'amber' },
+  { id: 13, day_of_week: 5, start_time: '14:00', end_time: '18:30', subject_name: 'IMC', room: FM, type: 'Prática', color: 'amber' }
 ]

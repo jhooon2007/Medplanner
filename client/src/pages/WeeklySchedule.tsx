@@ -14,7 +14,7 @@ export const WeeklySchedule: React.FC = () => {
   const { token, user } = useAuth()
   const [classes, setClasses] = useState<ClassItem[]>(() => {
     try {
-      const saved = localStorage.getItem('medplanner_classes')
+      const saved = localStorage.getItem('medplanner_classes_v2')
       if (saved) return JSON.parse(saved)
     } catch (e) {}
     return INITIAL_CLASSES
@@ -57,7 +57,7 @@ export const WeeklySchedule: React.FC = () => {
           const data = JSON.parse(text)
           if (data.classes && data.classes.length > 0) {
             setClasses(data.classes)
-            localStorage.setItem('medplanner_classes', JSON.stringify(data.classes))
+            localStorage.setItem('medplanner_classes_v2', JSON.stringify(data.classes))
           }
         } catch (e) {}
       }
@@ -124,7 +124,7 @@ export const WeeklySchedule: React.FC = () => {
       } else {
         updated = [...prev, newClassItem]
       }
-      localStorage.setItem('medplanner_classes', JSON.stringify(updated))
+      localStorage.setItem('medplanner_classes_v2', JSON.stringify(updated))
       return updated
     })
     setModalOpen(false)
@@ -153,7 +153,7 @@ export const WeeklySchedule: React.FC = () => {
 
     setClasses(prev => {
       const updated = prev.filter(c => c.id !== id)
-      localStorage.setItem('medplanner_classes', JSON.stringify(updated))
+      localStorage.setItem('medplanner_classes_v2', JSON.stringify(updated))
       return updated
     })
 
@@ -169,7 +169,7 @@ export const WeeklySchedule: React.FC = () => {
     }
   }
 
-  const filteredClasses = classes.filter(c => c.day_of_week === selectedDay)
+  const filteredClasses = classes.filter(c => c.day_of_week === selectedDay).sort((a, b) => a.start_time.localeCompare(b.start_time))
 
   const getTypeBadgeVariant = (type: string) => {
     switch (type) {
