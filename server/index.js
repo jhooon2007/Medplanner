@@ -348,6 +348,35 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) =
   }
 });
 
+// Create user by Admin
+app.post('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const { name, email, phone, role, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+    if (existing) {
+      return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail.' });
+    }
+
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    const photoUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name.trim())}`;
+
+    const result = db.prepare(`
+      INSERT INTO users (name, email, password, phone, photo_url, role)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name.trim(), normalizedEmail, hashedPassword, phone || null, photoUrl, role || 'student');
+
+    const newUser = db.prepare('SELECT id, name, email, phone, photo_url, role, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ message: 'Usuário cadastrado com sucesso!', user: newUser });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin Stats
 app.get('/api/admin/stats', authenticateToken, requireAdmin, (req, res) => {
   try {
@@ -364,6 +393,36 @@ app.get('/api/admin/stats', authenticateToken, requireAdmin, (req, res) => {
         totalEvents,
         totalSubjects,
         totalSubtopics
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin System Health & Diagnostic
+app.get('/api/admin/health', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const totalUsers = db.prepare('SELECT count(*) as count FROM users').get().count;
+    const totalGrades = db.prepare('SELECT count(*) as count FROM grades').get().count;
+    const totalEvents = db.prepare('SELECT count(*) as count FROM events').get().count;
+    const totalProgress = db.prepare('SELECT count(*) as count FROM checklist_progress WHERE completed = 1').get().count;
+
+    res.json({
+      status: 'healthy',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      node_version: process.version,
+      memory: process.memoryUsage(),
+      database: {
+        type: 'SQLite 3 (WAL mode)',
+        status: 'connected',
+        records: {
+          users: totalUsers,
+          grades: totalGrades,
+          events: totalEvents,
+          completed_subtopics: totalProgress,
+        }
       }
     });
   } catch (err) {
