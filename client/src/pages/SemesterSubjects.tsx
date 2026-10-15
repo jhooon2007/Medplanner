@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/Progress'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog'
 import { useAuth } from '@/context/AuthContext'
 import { Subject, Topic, Subtopic } from '@/types'
+import { INITIAL_SUBJECTS } from '@/data/initialData'
 import confetti from 'canvas-confetti'
 import {
   BookOpen, CheckSquare, ChevronRight, ChevronDown, Plus, Edit2, Trash2,
@@ -16,12 +17,18 @@ import { cn } from '@/lib/utils'
 
 export const SemesterSubjects: React.FC = () => {
   const { token, user } = useAuth()
-  const [subjects, setSubjects] = useState<Subject[]>([])
-  const [loading, setLoading] = useState(true)
+  const [subjects, setSubjects] = useState<Subject[]>(() => {
+    try {
+      const saved = localStorage.getItem('medplanner_subjects')
+      if (saved) return JSON.parse(saved)
+    } catch (e) {}
+    return INITIAL_SUBJECTS
+  })
+  const [loading, setLoading] = useState(false)
 
   // Selected subject view
-  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null)
-  const [expandedTopics, setExpandedTopics] = useState<Record<number, boolean>>({})
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(1)
+  const [expandedTopics, setExpandedTopics] = useState<Record<number, boolean>>({ 101: true })
 
   // Modals for Student Autonomy CRUD
   const [subjectModalOpen, setSubjectModalOpen] = useState(false)
@@ -48,17 +55,20 @@ export const SemesterSubjects: React.FC = () => {
 
       const res = await fetch('/api/subjects', { headers })
       if (res.ok) {
-        const data = await res.json()
-        setSubjects(data.subjects || [])
-        if (!selectedSubjectId && data.subjects?.length > 0) {
-          setSelectedSubjectId(data.subjects[0].id)
-          if (data.subjects[0].topics?.length > 0) {
-            setExpandedTopics({ [data.subjects[0].topics[0].id]: true })
+        const text = await res.text()
+        try {
+          const data = JSON.parse(text)
+          if (data.subjects && data.subjects.length > 0) {
+            setSubjects(data.subjects)
+            localStorage.setItem('medplanner_subjects', JSON.stringify(data.subjects))
+            if (!selectedSubjectId) {
+              setSelectedSubjectId(data.subjects[0].id)
+            }
           }
-        }
+        } catch (e) {}
       }
     } catch (err) {
-      console.error('Error fetching subjects:', err)
+      console.warn('Backend subjects offline, using local data:', err)
     } finally {
       setLoading(false)
     }
@@ -73,9 +83,9 @@ export const SemesterSubjects: React.FC = () => {
 
     const newCompleted = !currentCompleted
 
-    // Optimistic UI update
-    setSubjects(prev =>
-      prev.map(subj => {
+    // Optimistic UI update & localStorage save
+    setSubjects(prev => {
+      const updated = prev.map(subj => {
         let subjTotal = 0
         let subjCompleted = 0
 
@@ -101,7 +111,9 @@ export const SemesterSubjects: React.FC = () => {
           percentage,
         }
       })
-    )
+      localStorage.setItem('medplanner_subjects', JSON.stringify(updated))
+      return updated
+    })
 
     if (newCompleted) {
       confetti({
@@ -451,13 +463,13 @@ export const SemesterSubjects: React.FC = () => {
 
                   <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
                     <span>
-                      {s.completedSubtopics} de {s.totalSubtopics} tópicos
+                      {s.completedSubtopics || 0} de {s.totalSubtopics || 0} tópicos
                     </span>
                     <span className="font-semibold text-slate-600 dark:text-slate-300">
                       {s.topics?.length || 0} módulos
                     </span>
                   </div>
-                  <Progress value={s.percentage} colorClassName="bg-blue-600" className="mt-1.5 h-1.5" />
+                  <Progress value={s.percentage || 0} colorClassName="bg-blue-600" className="mt-1.5 h-1.5" />
                 </div>
               )
             })}

@@ -60,9 +60,9 @@ export interface Subject {
   description?: string
   order_index?: number
   topics: Topic[]
-  totalSubtopics: number
-  completedSubtopics: number
-  percentage: number
+  totalSubtopics?: number
+  completedSubtopics?: number
+  percentage?: number
 }
 
 export interface GradeItem {

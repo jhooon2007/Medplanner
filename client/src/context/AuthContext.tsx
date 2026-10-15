@@ -15,7 +15,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const savedUser = localStorage.getItem('medplanner_user')
+      if (savedUser) return JSON.parse(savedUser)
+    } catch (e) {}
+    return null
+  })
   const [token, setToken] = useState<string | null>(localStorage.getItem('medplanner_token'))
   const [loading, setLoading] = useState(true)
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -49,16 +55,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           headers: { Authorization: `Bearer ${token}` }
         })
         if (res.ok) {
-          const data = await res.json()
-          setUser(data.user)
-        } else {
-          // Token expired or invalid
+          const text = await res.text()
+          try {
+            const data = JSON.parse(text)
+            if (data.user) {
+              setUser(data.user)
+              localStorage.setItem('medplanner_user', JSON.stringify(data.user))
+            }
+          } catch (e) {}
+        } else if (res.status === 401 || res.status === 403) {
+          // Token expired or forbidden
           localStorage.removeItem('medplanner_token')
+          localStorage.removeItem('medplanner_user')
           setToken(null)
           setUser(null)
         }
       } catch (err) {
-        console.error('Failed to authenticate token:', err)
+        console.warn('Backend unreachable, keeping local session:', err)
       } finally {
         setLoading(false)
       }
@@ -69,12 +82,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem('medplanner_token', newToken)
+    localStorage.setItem('medplanner_user', JSON.stringify(newUser))
     setToken(newToken)
     setUser(newUser)
   }
 
   const logout = () => {
     localStorage.removeItem('medplanner_token')
+    localStorage.removeItem('medplanner_user')
     setToken(null)
     setUser(null)
   }

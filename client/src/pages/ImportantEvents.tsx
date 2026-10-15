@@ -7,13 +7,20 @@ import { Progress } from '@/components/ui/Progress'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog'
 import { useAuth } from '@/context/AuthContext'
 import { ImportantEvent } from '@/types'
+import { INITIAL_EVENTS } from '@/data/initialData'
 import { Clock, Calendar, CheckCircle2, AlertTriangle, Plus, Edit3, Trash2, ListChecks, ChevronRight, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export const ImportantEvents: React.FC = () => {
   const { token, user } = useAuth()
-  const [events, setEvents] = useState<ImportantEvent[]>([])
-  const [loading, setLoading] = useState(true)
+  const [events, setEvents] = useState<ImportantEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('medplanner_events')
+      if (saved) return JSON.parse(saved)
+    } catch (e) {}
+    return INITIAL_EVENTS
+  })
+  const [loading, setLoading] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState<string>('todos')
   const [selectedType, setSelectedType] = useState<string>('todos')
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false)
@@ -40,11 +47,17 @@ export const ImportantEvents: React.FC = () => {
 
       const res = await fetch('/api/events', { headers })
       if (res.ok) {
-        const data = await res.json()
-        setEvents(data.events || [])
+        const text = await res.text()
+        try {
+          const data = JSON.parse(text)
+          if (data.events && data.events.length > 0) {
+            setEvents(data.events)
+            localStorage.setItem('medplanner_events', JSON.stringify(data.events))
+          }
+        } catch (e) {}
       }
     } catch (err) {
-      console.error('Error fetching events:', err)
+      console.warn('Backend events offline, using local data:', err)
     } finally {
       setLoading(false)
     }
@@ -132,58 +145,82 @@ export const ImportantEvents: React.FC = () => {
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!token) return
 
-    try {
-      const topicsArray = formData.topics
-        .split('\n')
-        .map(t => t.trim())
-        .filter(Boolean)
+    const topicsArray = formData.topics
+      .split('\n')
+      .map(t => t.trim())
+      .filter(Boolean)
 
-      const payload = {
-        title: formData.title,
-        module_or_subject: formData.module_or_subject,
-        start_date: formData.start_date,
-        end_date: formData.end_date || null,
-        type: formData.type,
-        topics: topicsArray,
+    const payload = {
+      title: formData.title,
+      module_or_subject: formData.module_or_subject,
+      start_date: formData.start_date,
+      end_date: formData.end_date || null,
+      type: formData.type,
+      topics: topicsArray,
+    }
+
+    const newEventItem: ImportantEvent = {
+      id: editingEvent ? editingEvent.id : Date.now(),
+      title: formData.title,
+      module_or_subject: formData.module_or_subject,
+      start_date: formData.start_date,
+      end_date: formData.end_date || null,
+      type: formData.type,
+      topics: topicsArray,
+      is_custom: 1,
+    }
+
+    setEvents(prev => {
+      let updated: ImportantEvent[]
+      if (editingEvent) {
+        updated = prev.map(ev => ev.id === editingEvent.id ? { ...ev, ...newEventItem } : ev)
+      } else {
+        updated = [...prev, newEventItem]
       }
+      localStorage.setItem('medplanner_events', JSON.stringify(updated))
+      return updated
+    })
+    setEditModalOpen(false)
 
-      const url = editingEvent ? `/api/events/${editingEvent.id}` : '/api/events'
-      const method = editingEvent ? 'PUT' : 'POST'
+    if (token) {
+      try {
+        const url = editingEvent ? `/api/events/${editingEvent.id}` : '/api/events'
+        const method = editingEvent ? 'PUT' : 'POST'
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      })
-
-      if (res.ok) {
-        setEditModalOpen(false)
-        fetchEvents()
+        await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        })
+      } catch (err) {
+        console.warn('API save event skipped (saved locally):', err)
       }
-    } catch (err) {
-      console.error('Error saving event:', err)
     }
   }
 
   const handleDeleteEvent = async (id: number, evt?: React.MouseEvent) => {
     if (evt) evt.stopPropagation()
-    if (!token || !window.confirm('Deseja excluir este evento?')) return
+    if (!window.confirm('Deseja excluir este evento?')) return
 
-    try {
-      const res = await fetch(`/api/events/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (res.ok) {
-        fetchEvents()
+    setEvents(prev => {
+      const updated = prev.filter(e => e.id !== id)
+      localStorage.setItem('medplanner_events', JSON.stringify(updated))
+      return updated
+    })
+
+    if (token) {
+      try {
+        await fetch(`/api/events/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      } catch (err) {
+        console.warn('API delete event skipped (deleted locally):', err)
       }
-    } catch (err) {
-      console.error('Error deleting event:', err)
     }
   }
 

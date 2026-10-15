@@ -6,13 +6,20 @@ import { Input } from '@/components/ui/Input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog'
 import { useAuth } from '@/context/AuthContext'
 import { ClassItem } from '@/types'
+import { INITIAL_CLASSES } from '@/data/initialData'
 import { CalendarDays, Clock, MapPin, User, Plus, Edit2, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export const WeeklySchedule: React.FC = () => {
   const { token, user } = useAuth()
-  const [classes, setClasses] = useState<ClassItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [classes, setClasses] = useState<ClassItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('medplanner_classes')
+      if (saved) return JSON.parse(saved)
+    } catch (e) {}
+    return INITIAL_CLASSES
+  })
+  const [loading, setLoading] = useState(false)
   const [selectedDay, setSelectedDay] = useState<number>(1) // Default: Segunda-feira
 
   // Modal states
@@ -45,11 +52,17 @@ export const WeeklySchedule: React.FC = () => {
 
       const res = await fetch('/api/classes', { headers })
       if (res.ok) {
-        const data = await res.json()
-        setClasses(data.classes || [])
+        const text = await res.text()
+        try {
+          const data = JSON.parse(text)
+          if (data.classes && data.classes.length > 0) {
+            setClasses(data.classes)
+            localStorage.setItem('medplanner_classes', JSON.stringify(data.classes))
+          }
+        } catch (e) {}
       }
     } catch (err) {
-      console.error('Error fetching classes:', err)
+      console.warn('Backend classes offline, using local data:', err)
     } finally {
       setLoading(false)
     }
@@ -91,43 +104,68 @@ export const WeeklySchedule: React.FC = () => {
 
   const handleSaveClass = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!token) return
 
-    try {
-      const url = editingClass ? `/api/classes/${editingClass.id}` : '/api/classes'
-      const method = editingClass ? 'PUT' : 'POST'
+    const newClassItem: ClassItem = {
+      id: editingClass ? editingClass.id : Date.now(),
+      day_of_week: formData.day_of_week,
+      start_time: formData.start_time,
+      end_time: formData.end_time,
+      subject_name: formData.subject_name,
+      room: formData.room,
+      teacher: formData.teacher,
+      type: formData.type as any,
+      color: formData.color,
+    }
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      })
-
-      if (res.ok) {
-        setModalOpen(false)
-        fetchClasses()
+    setClasses(prev => {
+      let updated: ClassItem[]
+      if (editingClass) {
+        updated = prev.map(c => c.id === editingClass.id ? { ...c, ...newClassItem } : c)
+      } else {
+        updated = [...prev, newClassItem]
       }
-    } catch (err) {
-      console.error('Error saving class:', err)
+      localStorage.setItem('medplanner_classes', JSON.stringify(updated))
+      return updated
+    })
+    setModalOpen(false)
+
+    if (token) {
+      try {
+        const url = editingClass ? `/api/classes/${editingClass.id}` : '/api/classes'
+        const method = editingClass ? 'PUT' : 'POST'
+
+        await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(formData),
+        })
+      } catch (err) {
+        console.warn('API save class skipped (saved locally):', err)
+      }
     }
   }
 
   const handleDeleteClass = async (id: number) => {
-    if (!token || !window.confirm('Deseja excluir esta aula?')) return
+    if (!window.confirm('Deseja excluir esta aula?')) return
 
-    try {
-      const res = await fetch(`/api/classes/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (res.ok) {
-        fetchClasses()
+    setClasses(prev => {
+      const updated = prev.filter(c => c.id !== id)
+      localStorage.setItem('medplanner_classes', JSON.stringify(updated))
+      return updated
+    })
+
+    if (token) {
+      try {
+        await fetch(`/api/classes/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      } catch (err) {
+        console.warn('API delete class skipped (deleted locally):', err)
       }
-    } catch (err) {
-      console.error('Error deleting class:', err)
     }
   }
 
