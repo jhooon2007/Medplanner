@@ -336,6 +336,7 @@ export const INITIAL_SUBJECTS: Subject[] = RAW_SUBJECTS.map(s => {
   }))
   return {
     ...s,
+    semester: 2,
     totalSubtopics: total,
     completedSubtopics: completed,
     percentage: total > 0 ? Math.round((completed / total) * 100) : 0

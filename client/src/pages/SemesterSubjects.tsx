@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Progress } from '@/components/ui/Progress'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog'
 import { useAuth } from '@/context/AuthContext'
+import { useSemester } from '@/context/SemesterContext'
 import { Subject, Topic, Subtopic } from '@/types'
 import { INITIAL_SUBJECTS } from '@/data/initialData'
 import confetti from 'canvas-confetti'
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils'
 
 export const SemesterSubjects: React.FC = () => {
   const { token, user } = useAuth()
+  const { semesters, currentSemester, currentSemesterObj, setCurrentSemester } = useSemester()
   const [subjects, setSubjects] = useState<Subject[]>(() => {
     try {
       const saved = localStorage.getItem('medplanner_subjects')
@@ -38,6 +40,7 @@ export const SemesterSubjects: React.FC = () => {
     code: '',
     color: 'blue',
     description: '',
+    semester: currentSemester,
   })
 
   const [topicModalOpen, setTopicModalOpen] = useState(false)
@@ -146,9 +149,12 @@ export const SemesterSubjects: React.FC = () => {
     }))
   }
 
+  // Filter subjects for the active semester
+  const filteredSubjects = subjects.filter(s => (s.semester ?? 2) === currentSemester)
+
   let totalSemesterSubtopics = 0
   let completedSemesterSubtopics = 0
-  subjects.forEach(s => {
+  filteredSubjects.forEach(s => {
     totalSemesterSubtopics += s.totalSubtopics || 0
     completedSemesterSubtopics += s.completedSubtopics || 0
   })
@@ -159,7 +165,13 @@ export const SemesterSubjects: React.FC = () => {
   // SUBJECT CRUD
   const handleOpenAddSubject = () => {
     setEditingSubject(null)
-    setSubjectForm({ name: '', code: '', color: 'blue', description: '' })
+    setSubjectForm({
+      name: '',
+      code: '',
+      color: 'blue',
+      description: '',
+      semester: currentSemester,
+    })
     setSubjectModalOpen(true)
   }
 
@@ -171,51 +183,74 @@ export const SemesterSubjects: React.FC = () => {
       code: s.code || '',
       color: s.color || 'blue',
       description: s.description || '',
+      semester: (s.semester ?? currentSemester) as number,
     })
     setSubjectModalOpen(true)
   }
 
   const handleSaveSubject = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!token) return
 
-    try {
-      const url = editingSubject ? `/api/subjects/${editingSubject.id}` : '/api/subjects'
-      const method = editingSubject ? 'PUT' : 'POST'
+    const newSubj: Subject = {
+      id: editingSubject ? editingSubject.id : Date.now(),
+      name: subjectForm.name,
+      code: subjectForm.code || '',
+      color: subjectForm.color || 'blue',
+      description: subjectForm.description || '',
+      semester: subjectForm.semester ?? currentSemester,
+      topics: editingSubject ? editingSubject.topics : [],
+      totalSubtopics: editingSubject ? editingSubject.totalSubtopics : 0,
+      completedSubtopics: editingSubject ? editingSubject.completedSubtopics : 0,
+      percentage: editingSubject ? editingSubject.percentage : 0,
+    }
 
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(subjectForm)
-      })
-
-      if (res.ok) {
-        setSubjectModalOpen(false)
-        fetchSubjects()
+    setSubjects(prev => {
+      let updated: Subject[]
+      if (editingSubject) {
+        updated = prev.map(s => s.id === editingSubject.id ? { ...s, ...newSubj } : s)
+      } else {
+        updated = [...prev, newSubj]
       }
-    } catch (err) {
-      console.error('Error saving subject:', err)
+      localStorage.setItem('medplanner_subjects', JSON.stringify(updated))
+      return updated
+    })
+    setSelectedSubjectId(newSubj.id)
+    setSubjectModalOpen(false)
+
+    if (token) {
+      try {
+        const url = editingSubject ? `/api/subjects/${editingSubject.id}` : '/api/subjects'
+        const method = editingSubject ? 'PUT' : 'POST'
+        await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(subjectForm)
+        })
+      } catch (err) {}
     }
   }
 
   const handleDeleteSubject = async (subjectId: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
-    if (!token || !window.confirm('Excluir esta matéria e todos os seus tópicos?')) return
+    if (!window.confirm('Excluir esta matéria e todos os seus tópicos?')) return
 
-    try {
-      const res = await fetch(`/api/subjects/${subjectId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (res.ok) {
-        if (selectedSubjectId === subjectId) setSelectedSubjectId(null)
-        fetchSubjects()
-      }
-    } catch (err) {
-      console.error('Error deleting subject:', err)
+    setSubjects(prev => {
+      const updated = prev.filter(s => s.id !== subjectId)
+      localStorage.setItem('medplanner_subjects', JSON.stringify(updated))
+      return updated
+    })
+    if (selectedSubjectId === subjectId) setSelectedSubjectId(null)
+
+    if (token) {
+      try {
+        await fetch(`/api/subjects/${subjectId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      } catch (err) {}
     }
   }
 
@@ -338,7 +373,7 @@ export const SemesterSubjects: React.FC = () => {
     }
   }
 
-  const activeSubject = subjects.find(s => s.id === selectedSubjectId) || subjects[0]
+  const activeSubject = filteredSubjects.find(s => s.id === selectedSubjectId) || filteredSubjects[0]
 
   const getSubjectIcon = (name: string) => {
     if (name.includes('Anatomia')) return <Activity className="h-5 w-5 text-blue-600" />
@@ -351,14 +386,14 @@ export const SemesterSubjects: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header: Clean title without Aba 4 */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             Matérias do Semestre
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Checklist interativo de assuntos e subassuntos com autonomia total de edição.
+            Checklist interativo de matérias, assuntos e tópicos com autonomia total de edição.
           </p>
         </div>
 
@@ -370,6 +405,37 @@ export const SemesterSubjects: React.FC = () => {
         )}
       </div>
 
+      {/* Semester Switcher Pills */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {semesters.map(sem => {
+          const isSelected = sem.number === currentSemester
+          const count = subjects.filter(s => (s.semester ?? 2) === sem.number).length
+          return (
+            <button
+              key={sem.id}
+              onClick={() => {
+                setCurrentSemester(sem.number)
+                setSelectedSubjectId(null)
+              }}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+                isSelected
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 scale-[1.02]"
+                  : "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              )}
+            >
+              <span>{sem.name}</span>
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.2 rounded-full font-bold",
+                isSelected ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+              )}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Overall Progress Banner */}
       <Card className="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-transparent border-blue-500/20 p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
@@ -379,7 +445,7 @@ export const SemesterSubjects: React.FC = () => {
             </div>
             <div>
               <div className="text-sm font-bold text-slate-900 dark:text-white">
-                Progresso Geral do Semestre 2026.2
+                Progresso Geral • {currentSemesterObj.name}
               </div>
               <div className="text-xs text-slate-500">
                 {completedSemesterSubtopics} de {totalSemesterSubtopics} tópicos concluídos
@@ -399,13 +465,30 @@ export const SemesterSubjects: React.FC = () => {
         <div className="lg:col-span-5 space-y-3">
           <div className="flex items-center justify-between px-1">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Disciplinas ({subjects.length})
+              Disciplinas ({filteredSubjects.length})
             </span>
           </div>
 
-          <div className="space-y-2.5">
-            {subjects.map(s => {
-              const isSelected = activeSubject?.id === s.id
+          {filteredSubjects.length === 0 ? (
+            <Card className="border-dashed p-6 text-center bg-slate-50/50 dark:bg-slate-900/30">
+              <BookOpen className="h-8 w-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+              <p className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400">
+                Nenhuma matéria cadastrada no {currentSemesterObj.name}.
+              </p>
+              <p className="text-xs text-slate-400 mt-1 mb-3">
+                Adicione as matérias deste período para montar seu plano de estudos.
+              </p>
+              {user && (
+                <Button size="sm" onClick={handleOpenAddSubject} className="bg-blue-600 hover:bg-blue-700 text-xs">
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Cadastrar Matéria
+                </Button>
+              )}
+            </Card>
+          ) : (
+            <div className="space-y-2.5">
+              {filteredSubjects.map(s => {
+                const isSelected = activeSubject?.id === s.id
 
               return (
                 <div
@@ -474,7 +557,8 @@ export const SemesterSubjects: React.FC = () => {
               )
             })}
           </div>
-        </div>
+        )}
+      </div>
 
         {/* Right Column: Interactive Checklist Tree (7 cols) */}
         <div className="lg:col-span-7">
@@ -682,6 +766,20 @@ export const SemesterSubjects: React.FC = () => {
                 onChange={e => setSubjectForm({ ...subjectForm, code: e.target.value })}
                 className="mt-1"
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Semestre / Período</label>
+              <select
+                value={subjectForm.semester}
+                onChange={e => setSubjectForm({ ...subjectForm, semester: parseInt(e.target.value, 10) })}
+                className="mt-1 flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+              >
+                {semesters.map(sem => (
+                  <option key={sem.id} value={sem.number}>
+                    {sem.name} {sem.year_period ? `(${sem.year_period})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Descrição / Ementa</label>

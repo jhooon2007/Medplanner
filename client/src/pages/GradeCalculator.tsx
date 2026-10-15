@@ -10,9 +10,33 @@ import { cn } from '@/lib/utils'
 
 export const GradeCalculator: React.FC = () => {
   const { token, user } = useAuth()
-  const [activeModule, setActiveModule] = useState<'CHS_II' | 'IMC_II' | 'INTEGRADOR_II'>('CHS_II')
+  const [activeModule, setActiveModule] = useState<'CHS_II' | 'IMC_II' | 'INTEGRADOR_II' | 'CUSTOM_SEMESTER'>('CHS_II')
   const [saving, setSaving] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
+
+  // Custom disciplines for future/other semesters
+  const [customDisciplines, setCustomDisciplines] = useState<Array<{
+    id: string
+    name: string
+    n1: number | ''
+    n2: number | ''
+    n3: number | ''
+  }>>(() => {
+    try {
+      const saved = localStorage.getItem('medplanner_custom_calc')
+      if (saved) return JSON.parse(saved)
+    } catch (e) {}
+    return [
+      { id: '1', name: 'Farmacologia Médica', n1: 7.5, n2: 8.0, n3: '' },
+      { id: '2', name: 'Patologia Geral', n1: 7.0, n2: 7.5, n3: '' },
+    ]
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('medplanner_custom_calc', JSON.stringify(customDisciplines))
+    } catch (e) {}
+  }, [customDisciplines])
 
   // Grade state map with LocalStorage persistence
   const [scores, setScores] = useState<Record<string, number | ''>>(() => {
@@ -247,11 +271,12 @@ export const GradeCalculator: React.FC = () => {
       </div>
 
       {/* Module Selector Tabs */}
-      <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+      <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-x-auto">
         {[
           { id: 'CHS_II', label: 'Corpo Humano Saudável II (CHS II)' },
           { id: 'IMC_II', label: 'Introdução ao Método Clínico II (IMC II)' },
           { id: 'INTEGRADOR_II', label: 'Módulo Integrador II' },
+          { id: 'CUSTOM_SEMESTER', label: 'Outros Semestres' },
         ].map(mod => (
           <button
             key={mod.id}
@@ -892,6 +917,135 @@ export const GradeCalculator: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Outros Semestres: Calculadora Universal */}
+      {activeModule === 'CUSTOM_SEMESTER' && (
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent border-indigo-500/30 overflow-hidden">
+            <div className="p-6 sm:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <Badge variant="blue" className="mb-2">Calculadora Flexível</Badge>
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+                  Cálculo de Notas de Outros Semestres
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-xl mt-1 leading-relaxed">
+                  Adicione as disciplinas dos seus próximos períodos (3º, 4º, etc.), lance suas notas (N1, N2, N3) e acompanhe sua aprovação em tempo real.
+                </p>
+              </div>
+
+              <Button
+                onClick={() => {
+                  const newSub = {
+                    id: String(Date.now()),
+                    name: 'Nova Disciplina',
+                    n1: '' as const,
+                    n2: '' as const,
+                    n3: '' as const,
+                  }
+                  setCustomDisciplines(prev => [...prev, newSub])
+                }}
+                className="gap-2 shrink-0 bg-blue-600 hover:bg-blue-700 h-9"
+              >
+                + Adicionar Disciplina
+              </Button>
+            </div>
+          </Card>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {customDisciplines.map((d, index) => {
+              const val1 = d.n1 === '' ? 0 : Number(d.n1)
+              const val2 = d.n2 === '' ? 0 : Number(d.n2)
+              const hasN3 = d.n3 !== '' && d.n3 !== undefined
+              const val3 = hasN3 ? Number(d.n3) : 0
+              const media = hasN3 ? (val1 + val2 + val3) / 3 : (val1 + val2) / 2
+              const isApproved = media >= 6.0
+
+              return (
+                <Card key={d.id} className="p-5 space-y-4 border-slate-200/90 dark:border-slate-800">
+                  <div className="flex items-center justify-between gap-3">
+                    <Input
+                      value={d.name}
+                      onChange={e => {
+                        const val = e.target.value
+                        setCustomDisciplines(prev => prev.map((item, i) => i === index ? { ...item, name: val } : item))
+                      }}
+                      className="font-bold text-sm h-8"
+                      placeholder="Nome da Disciplina"
+                    />
+                    <Badge variant={isApproved ? 'blue' : 'warning'} className="font-mono text-xs shrink-0">
+                      Média: {media.toFixed(2)}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500">N1</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="10"
+                        placeholder="0.0"
+                        value={d.n1}
+                        onChange={e => {
+                          const val = e.target.value === '' ? '' : parseFloat(e.target.value)
+                          setCustomDisciplines(prev => prev.map((item, i) => i === index ? { ...item, n1: val } : item))
+                        }}
+                        className="mt-1 h-8 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500">N2</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="10"
+                        placeholder="0.0"
+                        value={d.n2}
+                        onChange={e => {
+                          const val = e.target.value === '' ? '' : parseFloat(e.target.value)
+                          setCustomDisciplines(prev => prev.map((item, i) => i === index ? { ...item, n2: val } : item))
+                        }}
+                        className="mt-1 h-8 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500">N3 (Opt)</label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="10"
+                        placeholder="—"
+                        value={d.n3}
+                        onChange={e => {
+                          const val = e.target.value === '' ? '' : parseFloat(e.target.value)
+                          setCustomDisciplines(prev => prev.map((item, i) => i === index ? { ...item, n3: val } : item))
+                        }}
+                        className="mt-1 h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <span className={cn("font-semibold", isApproved ? "text-emerald-600" : "text-amber-600")}>
+                      {isApproved ? 'Aprovado (>= 6,0)' : 'Abaixo da média'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCustomDisciplines(prev => prev.filter((_, i) => i !== index))}
+                      className="text-xs text-rose-500 hover:text-rose-700 cursor-pointer"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
       )}
     </div>
   )

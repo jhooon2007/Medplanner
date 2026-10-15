@@ -1,6 +1,7 @@
 import React from 'react'
 import { CalendarDays, Clock, Calculator, BookOpen, ShieldCheck, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useSemester } from '@/context/SemesterContext'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -10,6 +11,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const { user } = useAuth()
+  const { currentSemesterObj } = useSemester()
 
   const navItems = [
     {
@@ -99,11 +101,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
 
       {/* Quick Info card at bottom of sidebar */}
       <div className="mt-auto p-3.5 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/40 border border-slate-200/80 dark:from-slate-800/40 dark:to-blue-950/20 dark:border-slate-800 text-xs">
-        <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1">
-          Calendário Ativo
+        <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1 flex items-center justify-between">
+          <span>{currentSemesterObj.name}</span>
+          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-normal">Ativo</span>
         </div>
         <p className="text-slate-500 text-[11px] leading-relaxed">
-          Semestre 2026.2 UFG: Módulos CHS II, IMC II e Integrador II carregados no sistema.
+          {currentSemesterObj.year_period || 'Ciclo da Faculdade'}. Alterne ou adicione semestres no seletor do topo.
         </p>
       </div>
     </aside>

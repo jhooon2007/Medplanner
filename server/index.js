@@ -166,6 +166,73 @@ app.post('/api/auth/login', (req, res) => {
   }
 });
 
+// Google Authentication
+app.post('/api/auth/google', (req, res) => {
+  try {
+    const { credential, email, name, photo_url } = req.body;
+    let userEmail = email;
+    let userName = name;
+    let userPhoto = photo_url;
+
+    // Decode Google JWT if credential string is provided
+    if (credential) {
+      try {
+        const parts = credential.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+          if (payload.email) userEmail = payload.email;
+          if (payload.name) userName = payload.name;
+          if (payload.picture) userPhoto = payload.picture;
+        }
+      } catch (decodeErr) {
+        console.warn('Failed to decode Google credential JWT:', decodeErr.message);
+      }
+    }
+
+    if (!userEmail) {
+      return res.status(400).json({ error: 'E-mail do Google não informado.' });
+    }
+
+    userEmail = userEmail.toLowerCase().trim();
+
+    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(userEmail);
+    if (!user) {
+      // Create user from Google account
+      const randomPassword = bcrypt.hashSync(Math.random().toString(36), 10);
+      const result = db.prepare(`
+        INSERT INTO users (name, email, password, photo_url, role)
+        VALUES (?, ?, ?, ?, 'student')
+      `).run(userName || userEmail.split('@')[0], userEmail, randomPassword, userPhoto || null);
+
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+    } else if (userPhoto && !user.photo_url) {
+      // Update photo if available
+      db.prepare('UPDATE users SET photo_url = ? WHERE id = ?').run(userPhoto, user.id);
+      user.photo_url = userPhoto;
+    }
+
+    const userPayload = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      photo_url: user.photo_url,
+      role: user.role
+    };
+
+    const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      message: 'Autenticado via Google com sucesso!',
+      token,
+      user: userPayload
+    });
+  } catch (err) {
+    console.error('Google auth error:', err);
+    res.status(500).json({ error: 'Erro no login com Google: ' + err.message });
+  }
+});
+
 // Get current user profile
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   try {

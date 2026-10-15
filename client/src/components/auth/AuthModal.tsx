@@ -126,23 +126,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ open, onClose }) => {
 
         // Local credentials fallback for Vercel / offline
         if (!loggedUser) {
-          if (normalizedEmail === 'admin@medplanner.com' && password === 'admin123') {
+          if (normalizedEmail === 'admin@medplanner.com' && password === 'MedPlanner#2026!Admin') {
             loggedUser = {
               id: 1,
-              name: 'Administrador UFG',
+              name: 'Administrador',
               email: 'admin@medplanner.com',
               role: 'admin',
             }
             authToken = 'local-admin-token'
-          } else if (normalizedEmail === 'joao@medplanner.com' && (password === 'aluno123' || password.length >= 4)) {
-            loggedUser = {
-              id: 2,
-              name: 'João Victor',
-              email: 'joao@medplanner.com',
-              phone: '(62) 99999-8888',
-              role: 'student',
-            }
-            authToken = 'local-student-token'
           } else {
             // Check if there is a previously registered user in localStorage
             try {

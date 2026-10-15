@@ -139,24 +139,27 @@ function initDatabase() {
 }
 
 function seedInitialData() {
-  // Check if admin exists
-  const existingAdmin = db.prepare(`SELECT id FROM users WHERE email = ?`).get('admin@medplanner.com');
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@medplanner.com').toLowerCase().trim();
+  const adminPassword = process.env.ADMIN_PASSWORD || 'MedPlanner#2026!Admin';
+
+  // Purge any test student user if present
+  try {
+    db.prepare(`DELETE FROM users WHERE email LIKE '%@medplanner.com' AND role != 'admin'`).run();
+  } catch (e) {}
+
+  // Ensure admin user exists with secure credentials
+  const existingAdmin = db.prepare(`SELECT id FROM users WHERE email = ?`).get(adminEmail);
+  const salt = bcrypt.genSaltSync(10);
+  const adminHash = bcrypt.hashSync(adminPassword, salt);
+
   if (!existingAdmin) {
-    const salt = bcrypt.genSaltSync(10);
-    const adminPass = bcrypt.hashSync('admin123', salt);
-    const studentPass = bcrypt.hashSync('aluno123', salt);
-
     db.prepare(`
       INSERT INTO users (name, email, password, phone, role)
       VALUES (?, ?, ?, ?, ?)
-    `).run('Administrador UFG', 'admin@medplanner.com', adminPass, '(62) 98888-0000', 'admin');
-
-    db.prepare(`
-      INSERT INTO users (name, email, password, phone, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run('João Victor', 'joao@medplanner.com', studentPass, '(62) 99999-8888', 'student');
-
-    console.log('Default Admin (admin@medplanner.com / admin123) and Student (joao@medplanner.com / aluno123) created.');
+    `).run('Administrador', adminEmail, adminHash, '(62) 98888-0000', 'admin');
+    console.log(`Admin account initialized (${adminEmail}).`);
+  } else {
+    db.prepare(`UPDATE users SET password = ?, role = 'admin' WHERE id = ?`).run(adminHash, existingAdmin.id);
   }
 
   // Pre-seed Subjects if empty

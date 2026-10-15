@@ -155,7 +155,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <Badge variant="outline" className="text-xs py-1 px-3 border-blue-500/30 text-blue-700 dark:text-blue-300">
-          UFG Medicina • Semestre 2026.2
+          UFG Medicina • Planejamento Acadêmico
         </Badge>
       </div>
 

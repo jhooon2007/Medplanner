@@ -1,7 +1,7 @@
 {
   "name": "med-planner",
   "version": "1.0.0",
-  "description": "Med Planner by João - Plataforma Web Responsiva de Planejamento de Medicina 2026.2",
+  "description": "Med Planner - Plataforma Web Responsiva de Planejamento de Medicina",
   "main": "server/index.js",
   "scripts": {
     "dev": "concurrently -n \"API,WEB\" -c \"cyan,green\" \"node server/index.js\" \"npm run --prefix client dev\"",

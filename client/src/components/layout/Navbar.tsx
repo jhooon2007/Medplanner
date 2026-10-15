@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
+import { SemesterSelector } from '@/components/layout/SemesterSelector'
 import { Sun, Moon, LogOut, Shield, Stethoscope, User as UserIcon } from 'lucide-react'
 
 interface NavbarProps {
@@ -19,22 +20,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, activeTab, setActive
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         {/* Logo and Brand */}
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
             <Stethoscope className="h-5 w-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white">
-                Med Planner
-              </span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300">
-                by João Victor
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span>Semestre 2026.2</span>
-              <span className="hidden sm:inline">• UFG Medicina</span>
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white">
+              Med Planner
+            </span>
+            <div className="hidden sm:block">
+              <SemesterSelector />
             </div>
           </div>
         </div>

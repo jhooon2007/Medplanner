@@ -9,9 +9,18 @@ export interface User {
   completed_subtopics_count?: number
 }
 
+export interface Semester {
+  id: string
+  number: number
+  name: string
+  year_period?: string
+  is_current?: boolean
+}
+
 export interface ClassItem {
   id: number
   user_id?: number | null
+  semester?: number | string
   day_of_week: number // 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
   start_time: string
   end_time: string
@@ -25,6 +34,7 @@ export interface ClassItem {
 export interface ImportantEvent {
   id: number
   user_id?: number | null
+  semester?: number | string
   title: string
   module_or_subject: string
   start_date: string // YYYY-MM-DD
@@ -53,6 +63,7 @@ export interface Topic {
 export interface Subject {
   id: number
   user_id?: number | null
+  semester?: number | string
   name: string
   code?: string
   icon?: string
