@@ -439,7 +439,7 @@ export const GradeCalculator: React.FC = () => {
               <CardContent>
                 <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1 (Glicólise)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -451,7 +451,7 @@ export const GradeCalculator: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2 (Lipídeos)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -463,7 +463,7 @@ export const GradeCalculator: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N3 (Integração)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N3</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -475,7 +475,7 @@ export const GradeCalculator: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N4 (Teatro)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N4</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -502,13 +502,13 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  1ª Avaliação (peso 3,5) • 2ª Avaliação (peso 4,0) • 3ª Avaliação (peso 2,5)
+                  N1 (peso 3,5) • N2 (peso 4,0) • N3 (peso 2,5)
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">A1 (Cardio)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -521,7 +521,7 @@ export const GradeCalculator: React.FC = () => {
                     <span className="text-[10px] text-slate-400 mt-0.5 block">Peso 3,5</span>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">A2 (Resp.)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N2</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -534,7 +534,7 @@ export const GradeCalculator: React.FC = () => {
                     <span className="text-[10px] text-slate-400 mt-0.5 block">Peso 4,0</span>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">A3 (Digest/Renal)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N3</label>
                     <Input
                       type="number"
                       step="0.1"
