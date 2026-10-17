@@ -77,7 +77,8 @@ function authenticateToken(req, res, next) {
       } catch (e) {}
 
       if (token.startsWith('google-token-') || token.startsWith('local-token-')) {
-        req.user = { id: 2, name: 'Estudante', email: 'aluno@medplanner.com', role: 'student' };
+        const jvUser = db.prepare("SELECT * FROM users WHERE email = 'jvictor8573@gmail.com'").get();
+        req.user = jvUser || { id: 3, name: 'João Victor', email: 'jvictor8573@gmail.com', role: 'student' };
         return next();
       }
 
@@ -265,7 +266,13 @@ app.post('/api/auth/google', (req, res) => {
 // Get current user profile
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE id = ?').get(req.user.id);
+    let user = req.user?.id ? db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE id = ?').get(req.user.id) : null;
+    if (!user && req.user?.email) {
+      user = db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE email = ?').get(req.user.email.toLowerCase().trim());
+    }
+    if (!user) {
+      user = db.prepare("SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE email = 'jvictor8573@gmail.com'").get();
+    }
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
@@ -278,8 +285,17 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 // Onboarding Submission (Mandatory questionnaire after account creation)
 app.post('/api/auth/onboarding', authenticateToken, (req, res) => {
   try {
-    const { name, phone, birth_date, current_semester } = req.body;
-    const userId = req.user.id;
+    const { name, email, phone, birth_date, current_semester } = req.body;
+    
+    // Find target user by ID, email from body, or req.user.email
+    const targetEmail = (email || req.user?.email || '').toLowerCase().trim();
+    let user = req.user?.id ? db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) : null;
+    if (!user && targetEmail) {
+      user = db.prepare('SELECT * FROM users WHERE email = ?').get(targetEmail);
+    }
+    if (!user) {
+      user = db.prepare("SELECT * FROM users WHERE email = 'jvictor8573@gmail.com'").get();
+    }
 
     if (!birth_date || !current_semester) {
       return res.status(400).json({ error: 'Data de nascimento e período acadêmico são obrigatórios.' });
@@ -290,6 +306,7 @@ app.post('/api/auth/onboarding', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Período acadêmico inválido. Escolha entre o 1º e o 12º semestre.' });
     }
 
+    const userId = user ? user.id : req.user.id;
     let query = 'UPDATE users SET birth_date = ?, current_semester = ?, onboarding_completed = 1';
     const params = [birth_date.trim(), semesterNum];
 

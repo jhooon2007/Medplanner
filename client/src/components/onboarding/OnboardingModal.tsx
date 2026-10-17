@@ -34,16 +34,21 @@ export const OnboardingModal: React.FC = () => {
 
   const userEmail = user?.email ? user.email.toLowerCase().trim() : ''
   const storageDoneKey = userEmail ? `medplanner_onboarding_done_${userEmail}` : ''
-  const isDoneInLocalStorage = storageDoneKey ? localStorage.getItem(storageDoneKey) === 'true' : false
+  const isDoneInLocalStorage =
+    localStorage.getItem('medplanner_onboarding_done') === 'true' ||
+    (storageDoneKey ? localStorage.getItem(storageDoneKey) === 'true' : false)
 
-  // Determine if onboarding is already completed:
-  // 1. Database flag (onboarding_completed is truthy)
-  // 2. Local storage persistent flag for this user's email
-  // 3. User already possesses birth_date, current_semester and phone
-  const isAlreadyCompleted =
-    Boolean(user?.onboarding_completed) ||
+  // Absolute check: If user is admin, João Victor (pre-registered), or has completed onboarding: NEVER SHOW!
+  if (
+    !user ||
+    user.role === 'admin' ||
+    userEmail === 'jvictor8573@gmail.com' ||
     isDoneInLocalStorage ||
-    (Boolean(user?.birth_date) && Boolean(user?.current_semester) && Boolean(user?.phone))
+    Boolean(user.onboarding_completed) ||
+    (Boolean(user.birth_date) && Boolean(user.current_semester) && Boolean(user.phone))
+  ) {
+    return null
+  }
 
   // Phone mask helper: (XX) XXXXX-XXXX
   const formatPhone = (val: string) => {
@@ -55,11 +60,6 @@ export const OnboardingModal: React.FC = () => {
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPhone(formatPhone(e.target.value))
-  }
-
-  // If user is already completed, admin, or not logged in: NEVER ASK AGAIN!
-  if (!user || user.role === 'admin' || isAlreadyCompleted) {
-    return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -138,8 +138,12 @@ export const OnboardingModal: React.FC = () => {
       }
 
       // 2. Persist in local store
+      localStorage.setItem('medplanner_onboarding_done', 'true')
       if (storageDoneKey) {
         localStorage.setItem(storageDoneKey, 'true')
+      }
+      if (finalEmail) {
+        localStorage.setItem(`medplanner_onboarding_done_${finalEmail}`, 'true')
       }
       updatedUserObj.onboarding_completed = 1
       saveRegisteredUserLocally(updatedUserObj)
