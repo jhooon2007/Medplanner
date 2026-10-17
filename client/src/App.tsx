@@ -10,6 +10,7 @@ import { GradeCalculator } from '@/pages/GradeCalculator'
 import { SemesterSubjects } from '@/pages/SemesterSubjects'
 import { AdminDashboard } from '@/pages/AdminDashboard'
 import { LoginView } from '@/pages/LoginView'
+import { OnboardingModal } from '@/components/onboarding/OnboardingModal'
 import { Stethoscope } from 'lucide-react'
 
 const MainApp: React.FC = () => {
@@ -53,7 +54,9 @@ const MainApp: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+      <OnboardingModal />
+
       <Navbar
         onOpenAuth={() => {}}
         activeTab={activeTab}

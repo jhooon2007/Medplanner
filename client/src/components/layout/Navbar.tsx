@@ -16,7 +16,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, activeTab, setActive
   const { user, logout, isDark, toggleTheme } = useAuth()
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/80 transition-colors">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         {/* Logo and Brand */}
         <div className="flex items-center gap-3">
@@ -39,10 +39,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, activeTab, setActive
             variant="ghost"
             size="icon"
             onClick={toggleTheme}
-            className="rounded-xl h-9 w-9 text-slate-600 dark:text-slate-300"
+            className="rounded-xl h-9 w-9 text-slate-700 dark:text-slate-300"
             title={isDark ? 'Modo Claro' : 'Modo Escuro'}
           >
-            {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-600" />}
+            {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-700" />}
           </Button>
 
           {user ? (
@@ -73,7 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAuth, activeTab, setActive
                       <Badge variant="blue" className="text-[10px] py-0 px-1.5">Admin</Badge>
                     )}
                   </div>
-                  <div className="text-[11px] text-slate-400 truncate max-w-[120px]">
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
                     {user.email}
                   </div>
                 </div>

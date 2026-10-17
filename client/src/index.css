@@ -2,7 +2,8 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
+    /* True Light Mode: clean neutral canvas with high contrast */
+    --background: 210 20% 98%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -15,20 +16,20 @@
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 214 32% 95%;
-    --secondary-foreground: 222 47% 11.2%;
+    --secondary: 214 28% 94%;
+    --secondary-foreground: 222 47% 12%;
 
-    --muted: 214 32% 95%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 214 24% 94%;
+    --muted-foreground: 215 20% 38%;
 
-    --accent: 214 95% 94%;
-    --accent-foreground: 224 76% 40%;
+    --accent: 214 90% 94%;
+    --accent-foreground: 224 76% 36%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --border: 214.3 28% 88%;
+    --input: 214.3 28% 88%;
     --ring: 221.2 83.2% 53.3%;
 
     --radius: 0.75rem;

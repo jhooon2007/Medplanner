@@ -464,18 +464,18 @@ export const SemesterSubjects: React.FC = () => {
         {/* Left Column: Subjects Cards (5 cols) */}
         <div className="lg:col-span-5 space-y-3">
           <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
               Disciplinas ({filteredSubjects.length})
             </span>
           </div>
 
           {filteredSubjects.length === 0 ? (
             <Card className="border-dashed p-6 text-center bg-slate-50/50 dark:bg-slate-900/30">
-              <BookOpen className="h-8 w-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-              <p className="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400">
+              <BookOpen className="h-8 w-8 text-slate-400 dark:text-slate-600 mx-auto mb-2" />
+              <p className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-400">
                 Nenhuma matéria cadastrada no {currentSemesterObj.name}.
               </p>
-              <p className="text-xs text-slate-400 mt-1 mb-3">
+              <p className="text-xs text-slate-500 mt-1 mb-3">
                 Adicione as matérias deste período para montar seu plano de estudos.
               </p>
               {user && (
@@ -498,7 +498,7 @@ export const SemesterSubjects: React.FC = () => {
                     "p-4 rounded-2xl border transition-all duration-200 cursor-pointer select-none group relative",
                     isSelected
                       ? "border-blue-500 bg-white dark:bg-slate-900 shadow-md ring-2 ring-blue-500/20"
-                      : "border-slate-200/80 bg-white/70 dark:border-slate-800 dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900"
+                      : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900 shadow-xs"
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -511,7 +511,7 @@ export const SemesterSubjects: React.FC = () => {
                           {s.name}
                         </h3>
                         {s.code && (
-                          <span className="text-[11px] text-slate-400 font-medium">
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
                             {s.code}
                           </span>
                         )}

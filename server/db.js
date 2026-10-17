@@ -1,9 +1,10 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const bcrypt = require('bcryptjs');
 
-const isVercel = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+const isVercel = (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) && process.platform !== 'win32';
 let dbPath;
 
 if (isVercel) {
@@ -39,9 +40,28 @@ function initDatabase() {
       phone TEXT,
       photo_url TEXT,
       role TEXT NOT NULL DEFAULT 'student',
+      birth_date TEXT,
+      current_semester INTEGER,
+      onboarding_completed INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Migration for onboarding fields
+  try {
+    const existingCols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+    if (!existingCols.includes('birth_date')) {
+      db.exec(`ALTER TABLE users ADD COLUMN birth_date TEXT;`);
+    }
+    if (!existingCols.includes('current_semester')) {
+      db.exec(`ALTER TABLE users ADD COLUMN current_semester INTEGER;`);
+    }
+    if (!existingCols.includes('onboarding_completed')) {
+      db.exec(`ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0;`);
+    }
+  } catch (e) {
+    console.warn('Migration warning:', e.message);
+  }
 
   // 2. Classes (Aba 1 - Weekly Schedule)
   db.exec(`
@@ -154,12 +174,12 @@ function seedInitialData() {
 
   if (!existingAdmin) {
     db.prepare(`
-      INSERT INTO users (name, email, password, phone, role)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO users (name, email, password, phone, role, birth_date, current_semester, onboarding_completed)
+      VALUES (?, ?, ?, ?, ?, '1998-05-20', 4, 1)
     `).run('Administrador UFG', adminEmail, adminHash, '(62) 98888-0000', 'admin');
     console.log(`Admin account initialized (${adminEmail}).`);
   } else {
-    db.prepare(`UPDATE users SET password = ?, role = 'admin', name = 'Administrador UFG' WHERE id = ?`).run(adminHash, existingAdmin.id);
+    db.prepare(`UPDATE users SET password = ?, role = 'admin', name = 'Administrador UFG', birth_date = COALESCE(birth_date, '1998-05-20'), current_semester = COALESCE(current_semester, 4), onboarding_completed = 1 WHERE id = ?`).run(adminHash, existingAdmin.id);
   }
 
   // Ensure real student account for João Victor exists
@@ -168,10 +188,12 @@ function seedInitialData() {
   if (!existingJv) {
     const studentHash = bcrypt.hashSync('Medicina#2026', salt);
     db.prepare(`
-      INSERT INTO users (name, email, password, phone, role)
-      VALUES (?, ?, ?, ?, 'student')
+      INSERT INTO users (name, email, password, phone, role, birth_date, current_semester, onboarding_completed)
+      VALUES (?, ?, ?, ?, 'student', '2004-03-15', 4, 1)
     `).run('João Victor', jvEmail, studentHash, '(62) 99999-0000');
     console.log(`Student account initialized (${jvEmail}).`);
+  } else {
+    db.prepare(`UPDATE users SET birth_date = COALESCE(birth_date, '2004-03-15'), current_semester = COALESCE(current_semester, 4), onboarding_completed = 1 WHERE id = ?`).run(existingJv.id);
   }
 
   // Pre-seed Subjects if empty

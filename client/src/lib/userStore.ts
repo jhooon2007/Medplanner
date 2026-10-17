@@ -9,6 +9,9 @@ export const INITIAL_REGISTERED_USERS: User[] = [
     email: 'admin@medplanner.com',
     phone: '(62) 98888-0000',
     role: 'admin',
+    birth_date: '1998-05-20',
+    current_semester: 4,
+    onboarding_completed: 1,
     created_at: '2026-10-15T01:50:57.000Z',
     completed_subtopics_count: 42
   },
@@ -18,10 +21,29 @@ export const INITIAL_REGISTERED_USERS: User[] = [
     email: 'jvictor8573@gmail.com',
     phone: '(62) 99999-0000',
     role: 'student',
+    birth_date: '2004-03-15',
+    current_semester: 4,
+    onboarding_completed: 1,
     created_at: '2026-10-15T12:00:00.000Z',
     completed_subtopics_count: 28
   }
 ]
+
+export function isUserOnboardingPending(user: User | null | undefined): boolean {
+  if (!user) return false
+  if (user.role === 'admin') return false // Admins are system operators
+
+  // Mandatory fields check
+  const hasName = Boolean(user.name && user.name.trim().length >= 2)
+  const hasEmail = Boolean(user.email && user.email.includes('@'))
+  const hasPhone = Boolean(user.phone && user.phone.trim().length >= 8)
+  const hasBirthDate = Boolean(user.birth_date && user.birth_date.trim().length >= 4)
+  const hasSemester = Boolean(user.current_semester && user.current_semester >= 1 && user.current_semester <= 12)
+  const isMarkedCompleted = Boolean(user.onboarding_completed)
+
+  // If any required field is missing or not marked as completed
+  return !isMarkedCompleted || !hasName || !hasEmail || !hasPhone || !hasBirthDate || !hasSemester
+}
 
 export function getRegisteredUsersLocally(): User[] {
   try {
@@ -74,6 +96,9 @@ export function saveRegisteredUserLocally(user: Partial<User> & { email: string 
       phone: user.phone || null,
       photo_url: user.photo_url || null,
       role: user.role || 'student',
+      birth_date: user.birth_date || null,
+      current_semester: user.current_semester || null,
+      onboarding_completed: user.onboarding_completed || 0,
       created_at: user.created_at || new Date().toISOString(),
       completed_subtopics_count: user.completed_subtopics_count || 0
     }

@@ -50,8 +50,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   }
 
   return (
-    <aside className="hidden lg:flex flex-col w-72 shrink-0 border-r border-slate-200/80 bg-white dark:border-slate-800/80 dark:bg-slate-900/60 p-4 min-h-[calc(100vh-4rem)]">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-3 mb-2">
+    <aside className="hidden lg:flex flex-col w-72 shrink-0 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 p-4 min-h-[calc(100vh-4rem)]">
+      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 mb-2">
         Módulos Acadêmicos
       </div>
 
@@ -67,8 +67,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
               className={cn(
                 "w-full flex items-center justify-between p-3 rounded-xl text-left transition-all duration-200 group relative",
                 isActive
-                  ? "bg-blue-500/10 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-semibold shadow-xs"
-                  : "text-slate-600 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200"
+                  ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-semibold shadow-xs"
+                  : "text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 hover:text-slate-950 dark:hover:text-slate-200"
               )}
             >
               <div className="flex items-center gap-3">
@@ -77,21 +77,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
                     "h-9 w-9 rounded-lg flex items-center justify-center transition-colors",
                     isActive
                       ? "bg-blue-600 text-white shadow-sm shadow-blue-600/30"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:text-slate-900 dark:group-hover:text-slate-100"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 group-hover:text-slate-900 dark:group-hover:text-slate-100"
                   )}
                 >
                   <Icon className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="text-sm leading-snug">{item.label}</div>
-                  <div className="text-[11px] text-slate-400 font-normal">{item.sublabel}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">{item.sublabel}</div>
                 </div>
               </div>
 
               <ChevronRight
                 className={cn(
                   "h-4 w-4 transition-transform",
-                  isActive ? "text-blue-600 rotate-90" : "text-slate-300 group-hover:translate-x-0.5"
+                  isActive ? "text-blue-600 rotate-90" : "text-slate-400 group-hover:translate-x-0.5"
                 )}
               />
             </button>
@@ -100,12 +100,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       </nav>
 
       {/* Quick Info card at bottom of sidebar */}
-      <div className="mt-auto p-3.5 rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/40 border border-slate-200/80 dark:from-slate-800/40 dark:to-blue-950/20 dark:border-slate-800 text-xs">
-        <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1 flex items-center justify-between">
+      <div className="mt-auto p-3.5 rounded-2xl bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-800 text-xs">
+        <div className="font-semibold text-slate-900 dark:text-slate-200 mb-1 flex items-center justify-between">
           <span>{currentSemesterObj.name}</span>
-          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-normal">Ativo</span>
+          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">Ativo</span>
         </div>
-        <p className="text-slate-500 text-[11px] leading-relaxed">
+        <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
           {currentSemesterObj.year_period || 'Ciclo da Faculdade'}. Alterne ou adicione semestres no seletor do topo.
         </p>
       </div>

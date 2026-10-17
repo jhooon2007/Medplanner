@@ -56,6 +56,8 @@ export const AdminDashboard: React.FC = () => {
     name: '',
     email: '',
     phone: '',
+    birth_date: '',
+    current_semester: 1,
     role: 'student' as 'admin' | 'student',
     password: '',
   })
@@ -164,6 +166,8 @@ export const AdminDashboard: React.FC = () => {
       name: u.name,
       email: u.email,
       phone: u.phone || '',
+      birth_date: u.birth_date || '',
+      current_semester: u.current_semester || 1,
       role: u.role,
       password: '',
     })
@@ -175,6 +179,8 @@ export const AdminDashboard: React.FC = () => {
       name: '',
       email: '',
       phone: '',
+      birth_date: '',
+      current_semester: 1,
       role: 'student',
       password: '',
     })
@@ -191,6 +197,8 @@ export const AdminDashboard: React.FC = () => {
       name: userForm.name.trim(),
       email: userForm.email.trim().toLowerCase(),
       phone: userForm.phone.trim() || undefined,
+      birth_date: userForm.birth_date || undefined,
+      current_semester: userForm.current_semester,
       role: userForm.role
     })
 
@@ -223,6 +231,9 @@ export const AdminDashboard: React.FC = () => {
       name: userForm.name.trim(),
       email: userForm.email.trim().toLowerCase(),
       phone: userForm.phone.trim() || undefined,
+      birth_date: userForm.birth_date || undefined,
+      current_semester: userForm.current_semester,
+      onboarding_completed: 1,
       role: userForm.role,
       created_at: new Date().toISOString(),
       completed_subtopics_count: 0
@@ -419,13 +430,13 @@ export const AdminDashboard: React.FC = () => {
                 <Users className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Usuários Registrados
                 </div>
                 <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
                   {users.length || stats.totalUsers}
                 </div>
-                <div className="text-[11px] text-slate-500 truncate">
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
                   {users.filter(u => u.role === 'student').length} Alunos • {users.filter(u => u.role === 'admin').length} Admins
                 </div>
               </div>
@@ -436,13 +447,13 @@ export const AdminDashboard: React.FC = () => {
                 <Calendar className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Avaliações & Provas
                 </div>
                 <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
                   {events.length || stats.totalEvents}
                 </div>
-                <div className="text-[11px] text-slate-500 truncate">
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
                   {events.filter(e => e.type === 'Prova').length} Provas no Calendário
                 </div>
               </div>
@@ -453,13 +464,13 @@ export const AdminDashboard: React.FC = () => {
                 <BookOpen className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Disciplinas Ativas
                 </div>
                 <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
                   {stats.totalSubjects}
                 </div>
-                <div className="text-[11px] text-slate-500 truncate">
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
                   CHS II, IMC II e Integrador II
                 </div>
               </div>
@@ -470,13 +481,13 @@ export const AdminDashboard: React.FC = () => {
                 <CheckCircle2 className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                   Checklist Geral
                 </div>
                 <div className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
                   {stats.totalSubtopics}
                 </div>
-                <div className="text-[11px] text-slate-500 truncate">
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
                   Tópicos de estudo mapeados
                 </div>
               </div>
@@ -686,19 +697,21 @@ export const AdminDashboard: React.FC = () => {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Estudante</th>
-                    <th className="py-3 px-4">Contato</th>
-                    <th className="py-3 px-4">Perfil (Role)</th>
-                    <th className="py-3 px-4">Progresso Checklist</th>
+                    <th className="py-3 px-4">Período & Ciclo</th>
+                    <th className="py-3 px-4">Nascimento & Contato</th>
+                    <th className="py-3 px-4">Onboarding</th>
+                    <th className="py-3 px-4">Perfil</th>
+                    <th className="py-3 px-4">Checklist</th>
                     <th className="py-3 px-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-400 text-xs">
+                      <td colSpan={7} className="py-8 text-center text-slate-500 text-xs">
                         Nenhum usuário encontrado com os filtros atuais.
                       </td>
                     </tr>
@@ -707,6 +720,8 @@ export const AdminDashboard: React.FC = () => {
                       const totalEstimated = stats.totalSubtopics || 42
                       const completedCount = u.completed_subtopics_count || 0
                       const pct = Math.min(100, Math.round((completedCount / totalEstimated) * 100))
+                      const sem = u.current_semester || 1
+                      const cycleName = sem <= 4 ? 'Ciclo Básico' : sem <= 8 ? 'Ciclo Clínico' : 'Internato'
 
                       return (
                         <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
@@ -722,13 +737,34 @@ export const AdminDashboard: React.FC = () => {
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-xs text-slate-400 font-mono">{u.email}</div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">{u.email}</div>
                               </div>
                             </div>
                           </td>
 
-                          <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 font-mono text-xs">
-                            {u.phone || 'Não cadastrado'}
+                          <td className="py-3.5 px-4">
+                            <div className="font-medium text-slate-900 dark:text-slate-100">
+                              {u.current_semester ? `${u.current_semester}º Semestre` : '1º Semestre'}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">{cycleName}</div>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-xs">
+                            <div className="text-slate-800 dark:text-slate-300 font-mono">
+                              {u.phone || 'Tel. pendente'}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Nasc: {u.birth_date ? u.birth_date.split('-').reverse().join('/') : 'Não informado'}
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <Badge
+                              variant={u.onboarding_completed ? 'success' : 'warning'}
+                              className="text-[11px]"
+                            >
+                              {u.onboarding_completed ? 'Concluído' : 'Pendente'}
+                            </Badge>
                           </td>
 
                           <td className="py-3.5 px-4">
@@ -740,7 +776,7 @@ export const AdminDashboard: React.FC = () => {
                             </Badge>
                           </td>
 
-                          <td className="py-3.5 px-4 min-w-[140px]">
+                          <td className="py-3.5 px-4 min-w-[130px]">
                             <div className="space-y-1">
                               <div className="flex justify-between text-[11px]">
                                 <span className="font-semibold text-slate-700 dark:text-slate-300 font-mono">
@@ -1007,6 +1043,33 @@ export const AdminDashboard: React.FC = () => {
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Data de Nascimento</label>
+                <Input
+                  type="date"
+                  value={userForm.birth_date}
+                  onChange={e => setUserForm({ ...userForm, birth_date: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Período Acadêmico</label>
+                <select
+                  value={userForm.current_semester}
+                  onChange={e => setUserForm({ ...userForm, current_semester: parseInt(e.target.value, 10) || 1 })}
+                  className="mt-1 flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>
+                      {n}º Semestre ({n <= 4 ? 'Básico' : n <= 8 ? 'Clínico' : 'Internato'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Nível de Acesso (Papel)</label>
               <select
@@ -1098,6 +1161,33 @@ export const AdminDashboard: React.FC = () => {
                 onChange={e => setUserForm({ ...userForm, password: e.target.value })}
                 className="mt-1"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Data de Nascimento</label>
+                <Input
+                  type="date"
+                  value={userForm.birth_date}
+                  onChange={e => setUserForm({ ...userForm, birth_date: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Período Acadêmico</label>
+                <select
+                  value={userForm.current_semester}
+                  onChange={e => setUserForm({ ...userForm, current_semester: parseInt(e.target.value, 10) || 1 })}
+                  className="mt-1 flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>
+                      {n}º Semestre ({n <= 4 ? 'Básico' : n <= 8 ? 'Clínico' : 'Internato'})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div>

@@ -5,6 +5,9 @@ export interface User {
   phone?: string | null
   photo_url?: string | null
   role: 'admin' | 'student'
+  birth_date?: string | null
+  current_semester?: number | null
+  onboarding_completed?: boolean | number
   created_at?: string
   completed_subtopics_count?: number
 }

@@ -129,7 +129,10 @@ app.post('/api/auth/register', upload.single('photo'), (req, res) => {
       email: email.toLowerCase().trim(),
       phone: phone || null,
       photo_url: photoUrl,
-      role: 'student'
+      role: 'student',
+      birth_date: null,
+      current_semester: null,
+      onboarding_completed: 0
     };
 
     const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
@@ -170,7 +173,10 @@ app.post('/api/auth/login', (req, res) => {
       email: user.email,
       phone: user.phone,
       photo_url: user.photo_url,
-      role: user.role
+      role: user.role,
+      birth_date: user.birth_date || null,
+      current_semester: user.current_semester || null,
+      onboarding_completed: user.onboarding_completed || 0
     };
 
     const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '7d' });
@@ -237,7 +243,10 @@ app.post('/api/auth/google', (req, res) => {
       email: user.email,
       phone: user.phone,
       photo_url: user.photo_url,
-      role: user.role
+      role: user.role,
+      birth_date: user.birth_date || null,
+      current_semester: user.current_semester || null,
+      onboarding_completed: user.onboarding_completed || 0
     };
 
     const token = jwt.sign(userPayload, JWT_SECRET, { expiresIn: '7d' });
@@ -256,7 +265,7 @@ app.post('/api/auth/google', (req, res) => {
 // Get current user profile
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, name, email, phone, photo_url, role, created_at FROM users WHERE id = ?').get(req.user.id);
+    const user = db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE id = ?').get(req.user.id);
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
@@ -266,14 +275,75 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
   }
 });
 
+// Onboarding Submission (Mandatory questionnaire after account creation)
+app.post('/api/auth/onboarding', authenticateToken, (req, res) => {
+  try {
+    const { name, phone, birth_date, current_semester } = req.body;
+    const userId = req.user.id;
+
+    if (!birth_date || !current_semester) {
+      return res.status(400).json({ error: 'Data de nascimento e período acadêmico são obrigatórios.' });
+    }
+
+    const semesterNum = parseInt(current_semester, 10);
+    if (isNaN(semesterNum) || semesterNum < 1 || semesterNum > 12) {
+      return res.status(400).json({ error: 'Período acadêmico inválido. Escolha entre o 1º e o 12º semestre.' });
+    }
+
+    let query = 'UPDATE users SET birth_date = ?, current_semester = ?, onboarding_completed = 1';
+    const params = [birth_date.trim(), semesterNum];
+
+    if (name && name.trim()) {
+      query += ', name = ?';
+      params.push(name.trim());
+    }
+    if (phone && phone.trim()) {
+      query += ', phone = ?';
+      params.push(phone.trim());
+    }
+
+    query += ' WHERE id = ?';
+    params.push(userId);
+
+    db.prepare(query).run(...params);
+
+    const updatedUser = db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE id = ?').get(userId);
+    const token = jwt.sign(updatedUser, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      message: 'Questionário de onboarding concluído com sucesso!',
+      user: updatedUser,
+      token
+    });
+  } catch (err) {
+    console.error('Onboarding error:', err);
+    res.status(500).json({ error: 'Erro ao registrar respostas do onboarding: ' + err.message });
+  }
+});
+
+// Also support PUT /api/auth/onboarding
+app.put('/api/auth/onboarding', authenticateToken, (req, res) => {
+  req.url = '/api/auth/onboarding';
+  app._router.handle(req, res);
+});
+
 // Update profile (photo, phone, name)
 app.put('/api/auth/profile', authenticateToken, upload.single('photo'), (req, res) => {
   try {
-    const { name, phone, password } = req.body;
+    const { name, phone, password, birth_date, current_semester } = req.body;
     const userId = req.user.id;
 
     let query = 'UPDATE users SET name = COALESCE(?, name), phone = COALESCE(?, phone)';
     const params = [name || null, phone || null];
+
+    if (birth_date) {
+      query += ', birth_date = ?';
+      params.push(birth_date.trim());
+    }
+    if (current_semester) {
+      query += ', current_semester = ?';
+      params.push(parseInt(current_semester, 10));
+    }
 
     if (req.file) {
       query += ', photo_url = ?';
@@ -291,7 +361,7 @@ app.put('/api/auth/profile', authenticateToken, upload.single('photo'), (req, re
 
     db.prepare(query).run(...params);
 
-    const updatedUser = db.prepare('SELECT id, name, email, phone, photo_url, role FROM users WHERE id = ?').get(userId);
+    const updatedUser = db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE id = ?').get(userId);
     const token = jwt.sign(updatedUser, JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
@@ -312,7 +382,7 @@ app.put('/api/auth/profile', authenticateToken, upload.single('photo'), (req, re
 app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
   try {
     const users = db.prepare(`
-      SELECT u.id, u.name, u.email, u.phone, u.photo_url, u.role, u.created_at,
+      SELECT u.id, u.name, u.email, u.phone, u.photo_url, u.role, u.birth_date, u.current_semester, u.onboarding_completed, u.created_at,
              COUNT(DISTINCT cp.subtopic_id) as completed_subtopics_count
       FROM users u
       LEFT JOIN checklist_progress cp ON cp.user_id = u.id AND cp.completed = 1
@@ -330,10 +400,23 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
 app.put('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) => {
   try {
     const targetId = parseInt(req.params.id);
-    const { name, email, phone, role, password } = req.body;
+    const { name, email, phone, role, password, birth_date, current_semester, onboarding_completed } = req.body;
 
     let query = 'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), phone = COALESCE(?, phone), role = COALESCE(?, role)';
     const params = [name || null, email ? email.toLowerCase().trim() : null, phone || null, role || null];
+
+    if (birth_date) {
+      query += ', birth_date = ?';
+      params.push(birth_date.trim());
+    }
+    if (current_semester) {
+      query += ', current_semester = ?';
+      params.push(parseInt(current_semester, 10));
+    }
+    if (onboarding_completed !== undefined) {
+      query += ', onboarding_completed = ?';
+      params.push(onboarding_completed ? 1 : 0);
+    }
 
     if (password && password.trim().length >= 4) {
       const hashedPassword = bcrypt.hashSync(password, 10);
@@ -346,7 +429,7 @@ app.put('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) => {
 
     db.prepare(query).run(...params);
 
-    const updated = db.prepare('SELECT id, name, email, phone, photo_url, role FROM users WHERE id = ?').get(targetId);
+    const updated = db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE id = ?').get(targetId);
     res.json({ message: 'Usuário atualizado pelo Administrador.', user: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -371,7 +454,7 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, (req, res) =
 // Create user by Admin
 app.post('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
   try {
-    const { name, email, phone, role, password } = req.body;
+    const { name, email, phone, role, password, birth_date, current_semester } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
     }
@@ -384,13 +467,15 @@ app.post('/api/admin/users', authenticateToken, requireAdmin, (req, res) => {
 
     const hashedPassword = bcrypt.hashSync(password, 10);
     const photoUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name.trim())}`;
+    const sem = current_semester ? parseInt(current_semester, 10) : 1;
+    const bDate = birth_date ? birth_date.trim() : null;
 
     const result = db.prepare(`
-      INSERT INTO users (name, email, password, phone, photo_url, role)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(name.trim(), normalizedEmail, hashedPassword, phone || null, photoUrl, role || 'student');
+      INSERT INTO users (name, email, password, phone, photo_url, role, birth_date, current_semester, onboarding_completed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(name.trim(), normalizedEmail, hashedPassword, phone || null, photoUrl, role || 'student', bDate, sem);
 
-    const newUser = db.prepare('SELECT id, name, email, phone, photo_url, role, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
+    const newUser = db.prepare('SELECT id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ message: 'Usuário cadastrado com sucesso!', user: newUser });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1090,8 +1175,8 @@ if (fs.existsSync(clientDistPath)) {
   });
 }
 
-// Start Server (only if not running inside a Vercel serverless environment)
-if (!process.env.VERCEL) {
+// Start Server (only if not running inside a Vercel serverless environment or automated test)
+if (!process.env.VERCEL && !process.env.DISABLE_SERVER_LISTEN) {
   app.listen(PORT, () => {
     console.log(`Med Planner Backend rodando com sucesso na porta ${PORT}`);
   });

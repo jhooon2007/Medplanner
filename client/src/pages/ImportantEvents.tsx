@@ -296,7 +296,7 @@ export const ImportantEvents: React.FC = () => {
       </div>
 
       {/* Filter Tabs by Month and Type */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto scrollbar-none pb-1 sm:pb-0">
           {[
             { id: 'todos', label: 'Todos os meses' },
@@ -312,7 +312,7 @@ export const ImportantEvents: React.FC = () => {
                 "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer",
                 selectedMonth === m.id
                   ? "bg-blue-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  : "text-slate-700 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               )}
             >
               {m.label}
@@ -321,7 +321,7 @@ export const ImportantEvents: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <span className="text-xs text-slate-400">Tipo:</span>
+          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Tipo:</span>
           <select
             value={selectedType}
             onChange={e => setSelectedType(e.target.value)}
@@ -339,14 +339,14 @@ export const ImportantEvents: React.FC = () => {
 
       {/* Events List: 1 EVENT PER ROW (Single Column Row Stack) */}
       {loading ? (
-        <div className="py-12 text-center text-sm text-slate-400">Carregando eventos...</div>
+        <div className="py-12 text-center text-sm text-slate-500">Carregando eventos...</div>
       ) : filteredEvents.length === 0 ? (
         <Card className="border-dashed p-8 text-center bg-slate-50/50 dark:bg-slate-900/30">
-          <Clock className="h-10 w-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+          <Clock className="h-10 w-10 text-slate-400 dark:text-slate-600 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-400">
             Nenhum evento futuro encontrado para este filtro.
           </p>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Todos os prazos futuros estão em dia!
           </p>
         </Card>
@@ -365,7 +365,7 @@ export const ImportantEvents: React.FC = () => {
                 key={event.id}
                 onClick={() => setDetailsEvent(event)}
                 className={cn(
-                  "cursor-pointer transition-all duration-200 hover:shadow-md hover:border-blue-500/50 group border-slate-200/90 dark:border-slate-800 overflow-hidden",
+                  "cursor-pointer transition-all duration-200 hover:shadow-md hover:border-blue-500/50 group border-slate-200 dark:border-slate-800 overflow-hidden",
                   isImminent && "ring-2 ring-rose-500/30 border-rose-500/40 bg-gradient-to-r from-rose-50/30 via-transparent to-transparent dark:from-rose-950/20"
                 )}
               >
@@ -373,8 +373,8 @@ export const ImportantEvents: React.FC = () => {
                   {/* Left Section: Date Badge & Title/Module */}
                   <div className="flex items-start sm:items-center gap-3.5 flex-1 min-w-0">
                     {/* Date Block */}
-                    <div className="h-14 min-w-[3.5rem] px-2 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex flex-col items-center justify-center shrink-0">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div className="h-14 min-w-[3.5rem] px-2 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center shrink-0">
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                         {new Date(event.start_date + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
                       </span>
                       <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white font-mono leading-none mt-0.5 whitespace-nowrap">
@@ -398,7 +398,7 @@ export const ImportantEvents: React.FC = () => {
                         {event.title}
                       </h3>
 
-                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-600 dark:text-slate-400">
                         <ListChecks className="h-3.5 w-3.5 text-blue-600" />
                         <span>{event.topics?.length || 0} tópico(s) cobrado(s)</span>
                       </div>
@@ -408,7 +408,7 @@ export const ImportantEvents: React.FC = () => {
                   {/* Right Section: Countdown, Progress Bar, and Action Buttons */}
                   <div className="flex items-center justify-between md:justify-end gap-4 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-800">
                     <div className="w-36 hidden sm:block space-y-1">
-                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
                         <span>Proximidade</span>
                         <span>{progress}%</span>
                       </div>
