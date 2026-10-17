@@ -33,16 +33,21 @@ export function isUserOnboardingPending(user: User | null | undefined): boolean 
   if (!user) return false
   if (user.role === 'admin') return false // Admins are system operators
 
-  // Mandatory fields check
-  const hasName = Boolean(user.name && user.name.trim().length >= 2)
-  const hasEmail = Boolean(user.email && user.email.includes('@'))
-  const hasPhone = Boolean(user.phone && user.phone.trim().length >= 8)
-  const hasBirthDate = Boolean(user.birth_date && user.birth_date.trim().length >= 4)
-  const hasSemester = Boolean(user.current_semester && user.current_semester >= 1 && user.current_semester <= 12)
-  const isMarkedCompleted = Boolean(user.onboarding_completed)
+  const userEmail = user.email?.toLowerCase().trim()
+  if (userEmail && localStorage.getItem(`medplanner_onboarding_done_${userEmail}`) === 'true') {
+    return false
+  }
 
-  // If any required field is missing or not marked as completed
-  return !isMarkedCompleted || !hasName || !hasEmail || !hasPhone || !hasBirthDate || !hasSemester
+  if (Boolean(user.onboarding_completed)) {
+    return false
+  }
+
+  // If the user already has birth_date, current_semester, and phone
+  if (user.birth_date && user.current_semester && user.phone) {
+    return false
+  }
+
+  return true
 }
 
 export function getRegisteredUsersLocally(): User[] {
@@ -81,11 +86,16 @@ export function saveRegisteredUserLocally(user: Partial<User> & { email: string 
 
   let updatedUser: User
   if (existingIndex >= 0) {
+    const wasCompleted = Boolean(current[existingIndex].onboarding_completed) || Boolean(user.onboarding_completed)
     updatedUser = {
       ...current[existingIndex],
       ...user,
       id: current[existingIndex].id,
       email: normalizedEmail,
+      onboarding_completed: wasCompleted ? 1 : 0,
+      birth_date: user.birth_date || current[existingIndex].birth_date || null,
+      current_semester: user.current_semester || current[existingIndex].current_semester || null,
+      phone: user.phone || current[existingIndex].phone || null,
     }
     current[existingIndex] = updatedUser
   } else {
@@ -98,7 +108,7 @@ export function saveRegisteredUserLocally(user: Partial<User> & { email: string 
       role: user.role || 'student',
       birth_date: user.birth_date || null,
       current_semester: user.current_semester || null,
-      onboarding_completed: user.onboarding_completed || 0,
+      onboarding_completed: user.onboarding_completed ? 1 : 0,
       created_at: user.created_at || new Date().toISOString(),
       completed_subtopics_count: user.completed_subtopics_count || 0
     }

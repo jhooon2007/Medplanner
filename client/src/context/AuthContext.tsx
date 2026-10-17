@@ -60,6 +60,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const data = JSON.parse(text)
             if (data.user) {
+              const uEmail = data.user.email ? data.user.email.toLowerCase().trim() : ''
+              if (
+                localStorage.getItem(`medplanner_onboarding_done_${uEmail}`) === 'true' ||
+                (data.user.birth_date && data.user.current_semester && data.user.phone)
+              ) {
+                data.user.onboarding_completed = 1
+                if (uEmail) localStorage.setItem(`medplanner_onboarding_done_${uEmail}`, 'true')
+              }
               setUser(data.user)
               localStorage.setItem('medplanner_user', JSON.stringify(data.user))
             }
@@ -82,6 +90,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token])
 
   const login = (newToken: string, newUser: User) => {
+    const uEmail = newUser.email ? newUser.email.toLowerCase().trim() : ''
+    if (
+      localStorage.getItem(`medplanner_onboarding_done_${uEmail}`) === 'true' ||
+      (newUser.birth_date && newUser.current_semester && newUser.phone)
+    ) {
+      newUser.onboarding_completed = 1
+      if (uEmail) localStorage.setItem(`medplanner_onboarding_done_${uEmail}`, 'true')
+    }
     localStorage.setItem('medplanner_token', newToken)
     localStorage.setItem('medplanner_user', JSON.stringify(newUser))
     setToken(newToken)
@@ -96,7 +112,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const updateProfile = (updatedUser: User, newToken?: string) => {
+    const uEmail = updatedUser.email ? updatedUser.email.toLowerCase().trim() : ''
+    if (updatedUser.onboarding_completed && uEmail) {
+      localStorage.setItem(`medplanner_onboarding_done_${uEmail}`, 'true')
+    }
     setUser(updatedUser)
+    localStorage.setItem('medplanner_user', JSON.stringify(updatedUser))
     if (newToken) {
       localStorage.setItem('medplanner_token', newToken)
       setToken(newToken)

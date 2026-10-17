@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Stethoscope, Upload, AlertCircle, Sun, Moon, ShieldCheck, Sparkles, CheckCircle2, UserPlus, ArrowLeft, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/Dialog'
 import { cn } from '@/lib/utils'
-import { saveRegisteredUserLocally } from '@/lib/userStore'
+import { saveRegisteredUserLocally, getRegisteredUsersLocally } from '@/lib/userStore'
 
 export const LoginView: React.FC = () => {
   const { login, isDark, toggleTheme } = useAuth()
@@ -103,6 +103,11 @@ export const LoginView: React.FC = () => {
           try { data = text ? JSON.parse(text) : {} } catch (e) {}
 
           if (res.ok && data.token && data.user) {
+            if (localStorage.getItem(`medplanner_onboarding_done_${normalizedEmail}`) === 'true' || (data.user.birth_date && data.user.current_semester && data.user.phone)) {
+              data.user.onboarding_completed = 1
+              localStorage.setItem(`medplanner_onboarding_done_${normalizedEmail}`, 'true')
+            }
+            saveRegisteredUserLocally(data.user)
             login(data.token, data.user)
             loggedIn = true
           } else if (data.error) {
@@ -176,12 +181,20 @@ export const LoginView: React.FC = () => {
                   throw new Error('Não foi possível obter o e-mail da sua conta Google.')
                 }
 
-                const realUser = {
-                  id: Date.now(),
-                  name: profile.name || profile.email.split('@')[0],
-                  email: profile.email.toLowerCase(),
-                  photo_url: profile.picture || null,
-                  role: 'student' as const,
+                const gEmail = profile.email.toLowerCase().trim()
+                const existingLocal = getRegisteredUsersLocally().find(u => u.email.toLowerCase() === gEmail)
+                const isMarkedDone = localStorage.getItem(`medplanner_onboarding_done_${gEmail}`) === 'true'
+
+                const realUser: any = {
+                  id: existingLocal?.id || Date.now(),
+                  name: existingLocal?.name || profile.name || gEmail.split('@')[0],
+                  email: gEmail,
+                  photo_url: profile.picture || existingLocal?.photo_url || null,
+                  phone: existingLocal?.phone || null,
+                  birth_date: existingLocal?.birth_date || null,
+                  current_semester: existingLocal?.current_semester || null,
+                  onboarding_completed: (existingLocal?.onboarding_completed || isMarkedDone) ? 1 : 0,
+                  role: existingLocal?.role || ('student' as const),
                 }
 
                 // Sync with server if online
@@ -197,10 +210,18 @@ export const LoginView: React.FC = () => {
                     try {
                       const gData = JSON.parse(text)
                       if (gData.token) serverToken = gData.token
-                      if (gData.user) Object.assign(realUser, gData.user)
+                      if (gData.user) {
+                        Object.assign(realUser, gData.user)
+                      }
                     } catch (e) {}
                   }
                 } catch (e) {}
+
+                // If user had already completed onboarding, ensure flag stays locked as 1
+                if (isMarkedDone || existingLocal?.onboarding_completed || (realUser.birth_date && realUser.current_semester && realUser.phone)) {
+                  realUser.onboarding_completed = 1
+                  localStorage.setItem(`medplanner_onboarding_done_${gEmail}`, 'true')
+                }
 
                 saveRegisteredUserLocally(realUser)
                 login(serverToken, realUser)

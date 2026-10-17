@@ -32,13 +32,18 @@ export const OnboardingModal: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Determine if onboarding is complete
-  const isComplete = Boolean(user?.onboarding_completed) &&
-    hasExistingName &&
-    hasExistingEmail &&
-    hasExistingPhone &&
-    hasExistingBirthDate &&
-    hasExistingSemester
+  const userEmail = user?.email ? user.email.toLowerCase().trim() : ''
+  const storageDoneKey = userEmail ? `medplanner_onboarding_done_${userEmail}` : ''
+  const isDoneInLocalStorage = storageDoneKey ? localStorage.getItem(storageDoneKey) === 'true' : false
+
+  // Determine if onboarding is already completed:
+  // 1. Database flag (onboarding_completed is truthy)
+  // 2. Local storage persistent flag for this user's email
+  // 3. User already possesses birth_date, current_semester and phone
+  const isAlreadyCompleted =
+    Boolean(user?.onboarding_completed) ||
+    isDoneInLocalStorage ||
+    (Boolean(user?.birth_date) && Boolean(user?.current_semester) && Boolean(user?.phone))
 
   // Phone mask helper: (XX) XXXXX-XXXX
   const formatPhone = (val: string) => {
@@ -52,8 +57,8 @@ export const OnboardingModal: React.FC = () => {
     setPhone(formatPhone(e.target.value))
   }
 
-  // If user is already fully completed or not logged in, don't show
-  if (!user || user.role === 'admin' || isComplete) {
+  // If user is already completed, admin, or not logged in: NEVER ASK AGAIN!
+  if (!user || user.role === 'admin' || isAlreadyCompleted) {
     return null
   }
 
@@ -133,6 +138,10 @@ export const OnboardingModal: React.FC = () => {
       }
 
       // 2. Persist in local store
+      if (storageDoneKey) {
+        localStorage.setItem(storageDoneKey, 'true')
+      }
+      updatedUserObj.onboarding_completed = 1
       saveRegisteredUserLocally(updatedUserObj)
 
       // 3. Update global Auth Context
