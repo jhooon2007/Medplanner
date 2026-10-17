@@ -25,8 +25,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(localStorage.getItem('medplanner_token'))
   const [loading, setLoading] = useState(true)
   const [isDark, setIsDark] = useState<boolean>(() => {
-    return localStorage.getItem('medplanner_theme') === 'dark' ||
-      window.matchMedia('(prefers-color-scheme: dark)').matches
+    const saved = localStorage.getItem('medplanner_theme')
+    if (saved) return saved === 'dark'
+    return false
   })
 
   // Apply dark class to document
