@@ -240,10 +240,16 @@ export const LoginView: React.FC = () => {
       }
     }
 
-    // Direct OAuth Popup fallback
-    const redirectUri = window.location.origin
-    const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=openid%20profile%20email&prompt=select_account`
-    window.open(oauthUrl, 'google_login', 'width=520,height=630,menubar=no,toolbar=no,status=no')
+    // GIS not ready yet (script still loading or blocked): load it and ask for a new click.
+    // A redirect-based fallback is intentionally avoided: it requires a registered redirect_uri
+    // and would fail with redirect_uri_mismatch.
+    if (!document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
+      const s = document.createElement('script')
+      s.src = 'https://accounts.google.com/gsi/client'
+      s.async = true
+      document.head.appendChild(s)
+    }
+    setError('Carregando o login do Google. Aguarde um instante e toque em "Continuar com o Google" novamente.')
   }
 
   const handleGoogleClick = () => {
