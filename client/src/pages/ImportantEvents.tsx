@@ -16,7 +16,16 @@ export const ImportantEvents: React.FC = () => {
   const [events, setEvents] = useState<ImportantEvent[]>(() => {
     try {
       const saved = localStorage.getItem('medplanner_events')
-      if (saved) return JSON.parse(saved)
+      if (saved) {
+        const parsed: ImportantEvent[] = JSON.parse(saved)
+        // Inclui provas padrão novas que o cache local ainda não conhece
+        const knownTitles = new Set(parsed.map(e => e.title))
+        const seenRaw = localStorage.getItem('medplanner_events_seeded')
+        const seen: string[] = seenRaw ? JSON.parse(seenRaw) : []
+        const added = INITIAL_EVENTS.filter(e => !knownTitles.has(e.title) && !seen.includes(e.title))
+        localStorage.setItem('medplanner_events_seeded', JSON.stringify(INITIAL_EVENTS.map(e => e.title)))
+        return added.length ? [...parsed, ...added] : parsed
+      }
     } catch (e) {}
     return INITIAL_EVENTS
   })
@@ -237,7 +246,9 @@ export const ImportantEvents: React.FC = () => {
 
   const baseEventsList = showPastEvents ? events : upcomingAndTodayEvents
 
-  const filteredEvents = baseEventsList.filter(e => {
+  const filteredEvents = [...baseEventsList].sort((a, b) =>
+    a.start_date.localeCompare(b.start_date) || (a.end_date || a.start_date).localeCompare(b.end_date || b.start_date)
+  ).filter(e => {
     // Month filter
     if (selectedMonth !== 'todos') {
       const eventMonth = e.start_date.slice(5, 7)

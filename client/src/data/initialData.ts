@@ -436,6 +436,15 @@ export const INITIAL_EVENTS: ImportantEvent[] = [
     type: 'Apresentação',
     topics: ['Apresentação oral e discussão de caso clínico multidisciplinar']
   },
+  {
+    id: 21,
+    title: 'Avaliação N2 de Fisiologia',
+    module_or_subject: 'Fisiologia Humana (CHS II)',
+    start_date: '2026-10-30',
+    end_date: null,
+    type: 'Prova',
+    topics: ['Fisiologia do Sistema Digestório', 'Fisiologia do Sistema Respiratório']
+  },
   // Novembro / 2026
   {
     id: 11,

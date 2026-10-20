@@ -465,6 +465,14 @@ function seedInitialData() {
         type: 'Apresentação',
         topics: JSON.stringify(['Apresentação oral e discussão de caso clínico multidisciplinar'])
       },
+      {
+        title: 'Avaliação N2 de Fisiologia',
+        module_or_subject: 'Fisiologia Humana (CHS II)',
+        start_date: '2026-10-30',
+        end_date: null,
+        type: 'Prova',
+        topics: JSON.stringify(['Fisiologia do Sistema Digestório', 'Fisiologia do Sistema Respiratório'])
+      },
 
       // Novembro / 2026
       {
@@ -564,6 +572,20 @@ function seedInitialData() {
 
     tx();
     console.log('Pre-registered Events 2026.2 successfully inserted!');
+  }
+
+  // Eventos adicionados depois do seed inicial (bancos já populados)
+  const hasFisioN2 = db.prepare(`SELECT count(*) as count FROM events WHERE user_id IS NULL AND title = 'Avaliação N2 de Fisiologia'`).get().count;
+  if (hasFisioN2 === 0) {
+    db.prepare(`
+      INSERT INTO events (user_id, title, module_or_subject, start_date, end_date, type, topics, is_custom)
+      VALUES (NULL, ?, ?, ?, NULL, 'Prova', ?, 0)
+    `).run(
+      'Avaliação N2 de Fisiologia',
+      'Fisiologia Humana (CHS II)',
+      '2026-10-30',
+      JSON.stringify(['Fisiologia do Sistema Digestório', 'Fisiologia do Sistema Respiratório'])
+    );
   }
 
   // Pre-seed Weekly Schedule (Aba 1): substitui as aulas padrão antigas pelo horário real (uma única vez)
