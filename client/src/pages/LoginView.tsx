@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Stethoscope, Upload, AlertCircle, Sun, Moon, ShieldCheck, Sparkles, CheckCircle2, UserPlus, ArrowLeft, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/Dialog'
 import { cn } from '@/lib/utils'
-import { saveRegisteredUserLocally, getRegisteredUsersLocally } from '@/lib/userStore'
+import { api } from '@/lib/api'
 
 export const LoginView: React.FC = () => {
   const { login, isDark, toggleTheme } = useAuth()
@@ -53,99 +53,25 @@ export const LoginView: React.FC = () => {
         if (phone) formData.append('phone', phone)
         if (photoFile) formData.append('photo', photoFile)
 
-        let registered = false
-        try {
-          const res = await fetch('/api/auth/register', {
-            method: 'POST',
-            body: formData,
-          })
-          const text = await res.text()
-          let data: any = {}
-          try { data = text ? JSON.parse(text) : {} } catch (e) {}
+        const res = await fetch('/api/auth/register', { method: 'POST', body: formData })
+        const text = await res.text()
+        let data: any = {}
+        try { data = text ? JSON.parse(text) : {} } catch (e) {}
 
-          if (res.ok && data.token && data.user) {
-            saveRegisteredUserLocally(data.user)
-            login(data.token, data.user)
-            registered = true
-          } else if (data.error) {
-            throw new Error(data.error)
-          }
-        } catch (netErr: any) {
-          if (netErr.message && !netErr.message.includes('fetch')) {
-            throw netErr
-          }
+        if (!res.ok || !data.token || !data.user) {
+          throw new Error(data.error || 'Não foi possível criar a conta. Tente novamente.')
         }
-
-        // Offline / client-side registration fallback if backend is offline
-        if (!registered) {
-          const localUser = {
-            id: Date.now(),
-            name: name.trim() || 'Estudante de Medicina',
-            email: normalizedEmail,
-            phone: phone.trim() || null,
-            photo_url: photoPreview || null,
-            role: 'student' as const,
-          }
-          saveRegisteredUserLocally(localUser)
-          login('local-token-' + Date.now(), localUser)
-        }
+        login(data.token, data.user)
       } else {
-        // Login flow
-        let loggedIn = false
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: normalizedEmail, password }),
-          })
-          const text = await res.text()
-          let data: any = {}
-          try { data = text ? JSON.parse(text) : {} } catch (e) {}
-
-          if (res.ok && data.token && data.user) {
-            if (localStorage.getItem(`medplanner_onboarding_done_${normalizedEmail}`) === 'true' || (data.user.birth_date && data.user.current_semester && data.user.phone)) {
-              data.user.onboarding_completed = 1
-              localStorage.setItem(`medplanner_onboarding_done_${normalizedEmail}`, 'true')
-            }
-            saveRegisteredUserLocally(data.user)
-            login(data.token, data.user)
-            loggedIn = true
-          } else if (data.error) {
-            throw new Error(data.error)
-          }
-        } catch (netErr: any) {
-          if (netErr.message && !netErr.message.includes('fetch')) {
-            throw netErr
-          }
-        }
-
-        if (!loggedIn) {
-          // Check admin credentials fallback for static hosting
-          if (normalizedEmail === 'admin@medplanner.com' && password === 'MedPlanner#2026!Admin') {
-            login('admin-token-' + Date.now(), {
-              id: 1,
-              name: 'Administrador UFG',
-              email: 'admin@medplanner.com',
-              role: 'admin',
-            })
-          } else {
-            // Check if there is a previously registered local user
-            try {
-              const saved = localStorage.getItem('medplanner_user')
-              if (saved) {
-                const parsed = JSON.parse(saved)
-                if (parsed.email === normalizedEmail) {
-                  login('local-token-' + Date.now(), parsed)
-                  return
-                }
-              }
-            } catch (e) {}
-            throw new Error('E-mail ou senha incorretos.')
-          }
-        }
+        const data = await api<any>(null, '/api/auth/login', {
+          method: 'POST',
+          body: { email: normalizedEmail, password },
+        })
+        login(data.token, data.user)
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao processar autenticação.')
+      const offline = err instanceof TypeError
+      setError(offline ? 'Sem conexão com o servidor. Verifique sua internet e tente de novo.' : (err.message || 'Erro ao processar autenticação.'))
     } finally {
       setLoading(false)
     }
@@ -170,61 +96,12 @@ export const LoginView: React.FC = () => {
             if (tokenResponse.access_token) {
               try {
                 setLoading(true)
-                const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                  headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+                // O servidor valida o token direto com o Google; o navegador não informa e-mail nenhum.
+                const data = await api<any>(null, '/api/auth/google', {
+                  method: 'POST',
+                  body: { access_token: tokenResponse.access_token },
                 })
-                const text = await res.text()
-                let profile: any = {}
-                try { profile = text ? JSON.parse(text) : {} } catch (e) {}
-
-                if (!profile.email) {
-                  throw new Error('Não foi possível obter o e-mail da sua conta Google.')
-                }
-
-                const gEmail = profile.email.toLowerCase().trim()
-                const existingLocal = getRegisteredUsersLocally().find(u => u.email.toLowerCase() === gEmail)
-                const isMarkedDone = localStorage.getItem(`medplanner_onboarding_done_${gEmail}`) === 'true'
-
-                const realUser: any = {
-                  id: existingLocal?.id || Date.now(),
-                  name: existingLocal?.name || profile.name || gEmail.split('@')[0],
-                  email: gEmail,
-                  photo_url: profile.picture || existingLocal?.photo_url || null,
-                  phone: existingLocal?.phone || null,
-                  birth_date: existingLocal?.birth_date || null,
-                  current_semester: existingLocal?.current_semester || null,
-                  onboarding_completed: (existingLocal?.onboarding_completed || isMarkedDone) ? 1 : 0,
-                  role: existingLocal?.role || ('student' as const),
-                }
-
-                // Sync with server if online
-                let serverToken = 'google-token-' + Date.now()
-                try {
-                  const gRes = await fetch('/api/auth/google', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(realUser)
-                  })
-                  if (gRes.ok) {
-                    const text = await gRes.text()
-                    try {
-                      const gData = JSON.parse(text)
-                      if (gData.token) serverToken = gData.token
-                      if (gData.user) {
-                        Object.assign(realUser, gData.user)
-                      }
-                    } catch (e) {}
-                  }
-                } catch (e) {}
-
-                // If user had already completed onboarding, ensure flag stays locked as 1
-                if (isMarkedDone || existingLocal?.onboarding_completed || (realUser.birth_date && realUser.current_semester && realUser.phone)) {
-                  realUser.onboarding_completed = 1
-                  localStorage.setItem(`medplanner_onboarding_done_${gEmail}`, 'true')
-                }
-
-                saveRegisteredUserLocally(realUser)
-                login(serverToken, realUser)
+                login(data.token, data.user)
               } catch (err: any) {
                 setError(err.message || 'Erro ao carregar dados da conta Google.')
               } finally {

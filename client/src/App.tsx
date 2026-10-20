@@ -10,6 +10,7 @@ import { GradeCalculator } from '@/pages/GradeCalculator'
 import { SemesterSubjects } from '@/pages/SemesterSubjects'
 import { AdminDashboard } from '@/pages/AdminDashboard'
 import { LoginView } from '@/pages/LoginView'
+import { AnnouncementBanner } from '@/components/layout/AnnouncementBanner'
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal'
 import { Stethoscope } from 'lucide-react'
 
@@ -67,6 +68,7 @@ const MainApp: React.FC = () => {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <AnnouncementBanner />
           {renderActiveScreen()}
         </main>
       </div>

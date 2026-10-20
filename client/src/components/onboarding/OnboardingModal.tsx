@@ -4,7 +4,7 @@ import { useSemester } from '@/context/SemesterContext'
 import { Dialog, DialogContent } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { saveRegisteredUserLocally } from '@/lib/userStore'
+import { api } from '@/lib/api'
 import {
   CheckCircle2, AlertCircle, GraduationCap,
   Calendar, Phone, User as UserIcon, Mail, ArrowRight, Loader2
@@ -32,21 +32,8 @@ export const OnboardingModal: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const userEmail = user?.email ? user.email.toLowerCase().trim() : ''
-  const storageDoneKey = userEmail ? `medplanner_onboarding_done_${userEmail}` : ''
-  const isDoneInLocalStorage =
-    localStorage.getItem('medplanner_onboarding_done') === 'true' ||
-    (storageDoneKey ? localStorage.getItem(storageDoneKey) === 'true' : false)
-
-  // Absolute check: If user is admin, João Victor (pre-registered), or has completed onboarding: NEVER SHOW!
-  if (
-    !user ||
-    user.role === 'admin' ||
-    userEmail === 'jvictor8573@gmail.com' ||
-    isDoneInLocalStorage ||
-    Boolean(user.onboarding_completed) ||
-    (Boolean(user.birth_date) && Boolean(user.current_semester) && Boolean(user.phone))
-  ) {
+  // O servidor é a fonte da verdade: só pergunta de novo quem ainda não concluiu o questionário.
+  if (!user || user.role === 'admin' || Boolean(user.onboarding_completed)) {
     return null
   }
 
@@ -106,52 +93,12 @@ export const OnboardingModal: React.FC = () => {
     }
 
     try {
-      // 1. Send to server if token exists
-      let updatedUserObj = {
-        ...user,
-        ...payload
-      }
-      let newToken: string | undefined = undefined
+      const data = await api<{ user: typeof user; token?: string }>(token, '/api/auth/onboarding', {
+        method: 'POST',
+        body: payload,
+      })
 
-      if (token) {
-        try {
-          const res = await fetch('/api/auth/onboarding', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify(payload)
-          })
-
-          if (res.ok) {
-            const text = await res.text()
-            try {
-              const data = JSON.parse(text)
-              if (data.user) updatedUserObj = data.user
-              if (data.token) newToken = data.token
-            } catch (e) {}
-          }
-        } catch (apiErr) {
-          console.warn('API onboarding call fallback to local:', apiErr)
-        }
-      }
-
-      // 2. Persist in local store
-      localStorage.setItem('medplanner_onboarding_done', 'true')
-      if (storageDoneKey) {
-        localStorage.setItem(storageDoneKey, 'true')
-      }
-      if (finalEmail) {
-        localStorage.setItem(`medplanner_onboarding_done_${finalEmail}`, 'true')
-      }
-      updatedUserObj.onboarding_completed = 1
-      saveRegisteredUserLocally(updatedUserObj)
-
-      // 3. Update global Auth Context
-      updateProfile(updatedUserObj, newToken)
-
-      // 4. Update SemesterContext to reflect the student's selected semester
+      updateProfile(data.user!, data.token)
       setCurrentSemester(finalSemester)
 
     } catch (err: any) {

@@ -27,9 +27,24 @@ Abra no navegador:
 ## 🔒 Autenticação e Acesso
 
 A plataforma conta com proteção de rotas e autenticação obrigatória:
-* **Login com Google:** Integração com autenticação Google (Google Identity Services).
+* **Login com Google:** O servidor valida o token direto com o Google (o navegador não escolhe o e-mail).
 * **Cadastro de Estudante:** Criação de conta individual com e-mail, senha, telefone e foto de perfil.
-* **Perfil de Administrador:** Gerenciamento centralizado de usuários e configurações acadêmicas. O e-mail e senha do administrador são definidos via variáveis de ambiente (`ADMIN_EMAIL` e `ADMIN_PASSWORD`).
+* **Perfil de Administrador:** Painel com dados reais dos alunos, avisos gerais e provas da turma (ver abaixo). O e-mail e a senha do administrador vêm das variáveis `ADMIN_EMAIL` e `ADMIN_PASSWORD`.
+
+### 🛠️ Painel de Administração
+* **Alunos:** lista de todos que criaram conta, com período, telefone, último acesso, notas lançadas e progresso por matéria.
+* **Avisos gerais:** publique mensagens que aparecem no topo do app de todos os alunos (ex.: "Não haverá aula na terça"). Dá para ocultar, definir data para sumir e marcar como urgente.
+* **Provas da turma:** crie, remarque ou remova provas para todos de uma vez. Eventos que os alunos criaram por conta própria não são alterados.
+
+---
+
+## ⚙️ Configuração
+
+Copie `.env.example` e preencha as variáveis. Em produção (Vercel) o banco precisa ser persistente: use o [Turso](https://turso.tech) (`TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN`). Sem isso o app não sobe na Vercel, pois o disco da função é apagado a cada reinício.
+
+```bash
+npm test   # testes de integração da API (usam um banco temporário)
+```
 
 ---
 

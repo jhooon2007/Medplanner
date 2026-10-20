@@ -1,37 +1,75 @@
-const Database = require('better-sqlite3');
+const { createClient } = require('@libsql/client');
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
 const bcrypt = require('bcryptjs');
 
-const isVercel = (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) && process.platform !== 'win32';
-let dbPath;
+// Banco persistente: Turso (libSQL) em produção, arquivo SQLite local em desenvolvimento.
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const tursoUrl = process.env.TURSO_DATABASE_URL;
 
-if (isVercel) {
-  const tmpDbPath = path.resolve('/tmp', 'medplanner.db');
-  const sourceDbPath = path.resolve(__dirname, 'medplanner.db');
-  if (!fs.existsSync(tmpDbPath) && fs.existsSync(sourceDbPath)) {
-    try {
-      fs.copyFileSync(sourceDbPath, tmpDbPath);
-    } catch (e) {
-      console.warn('Could not copy initial db to /tmp:', e.message);
-    }
-  }
-  dbPath = tmpDbPath;
-} else {
-  dbPath = path.resolve(__dirname, 'medplanner.db');
+if (isServerless && !tursoUrl) {
+  throw new Error('TURSO_DATABASE_URL não configurada. Em produção (Vercel) o banco precisa ser persistente.');
 }
 
-const db = new Database(dbPath);
+const client = createClient({
+  url: tursoUrl || 'file:' + path.resolve(__dirname, 'medplanner.db'),
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
+function toPlain(columns, row) {
+  const out = {};
+  columns.forEach((col, i) => { out[col] = row[i]; });
+  return out;
+}
 
-function initDatabase() {
+// Mesma forma de uso do better-sqlite3 (prepare/get/all/run), porém assíncrona.
+function wrap(executor) {
+  return {
+    prepare(sql) {
+      return {
+        async get(...args) {
+          const r = await executor.execute({ sql, args });
+          return r.rows.length ? toPlain(r.columns, r.rows[0]) : undefined;
+        },
+        async all(...args) {
+          const r = await executor.execute({ sql, args });
+          return r.rows.map(row => toPlain(r.columns, row));
+        },
+        async run(...args) {
+          const r = await executor.execute({ sql, args });
+          return {
+            changes: r.rowsAffected,
+            lastInsertRowid: r.lastInsertRowid !== undefined ? Number(r.lastInsertRowid) : undefined,
+          };
+        },
+      };
+    },
+  };
+}
+
+const db = wrap(client);
+
+db.exec = async (sql) => { await client.executeMultiple(sql); };
+
+// fn recebe um "db" ligado à transação; commit automático, rollback em erro.
+db.transaction = async (fn) => {
+  const tx = await client.transaction('write');
+  try {
+    const result = await fn(wrap(tx));
+    await tx.commit();
+    return result;
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  } finally {
+    tx.close();
+  }
+};
+
+async function initDatabase() {
   console.log('Initializing Database schemas...');
 
   // 1. Users
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -49,22 +87,59 @@ function initDatabase() {
 
   // Migration for onboarding fields
   try {
-    const existingCols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+    const existingCols = (await db.prepare('PRAGMA table_info(users)').all()).map(c => c.name);
     if (!existingCols.includes('birth_date')) {
-      db.exec(`ALTER TABLE users ADD COLUMN birth_date TEXT;`);
+      await db.exec(`ALTER TABLE users ADD COLUMN birth_date TEXT;`);
     }
     if (!existingCols.includes('current_semester')) {
-      db.exec(`ALTER TABLE users ADD COLUMN current_semester INTEGER;`);
+      await db.exec(`ALTER TABLE users ADD COLUMN current_semester INTEGER;`);
     }
     if (!existingCols.includes('onboarding_completed')) {
-      db.exec(`ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0;`);
+      await db.exec(`ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0;`);
     }
   } catch (e) {
     console.warn('Migration warning:', e.message);
   }
 
+  try {
+    const cols = (await db.prepare('PRAGMA table_info(users)').all()).map(c => c.name);
+    if (!cols.includes('last_login_at')) {
+      await db.exec(`ALTER TABLE users ADD COLUMN last_login_at DATETIME;`);
+    }
+  } catch (e) {
+    console.warn('Migration warning:', e.message);
+  }
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    -- Fotos de perfil ficam no banco (o disco da Vercel é somente leitura/efêmero)
+    CREATE TABLE IF NOT EXISTS user_photos (
+      user_id INTEGER PRIMARY KEY,
+      mime TEXT NOT NULL,
+      data TEXT NOT NULL, -- base64
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- Avisos gerais publicados pelo administrador para todos os alunos
+    CREATE TABLE IF NOT EXISTS announcements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info', -- info | warning | urgent
+      active INTEGER NOT NULL DEFAULT 1,
+      expires_at TEXT,                    -- YYYY-MM-DD (opcional)
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
+
   // 2. Classes (Aba 1 - Weekly Schedule)
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS classes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
@@ -81,7 +156,7 @@ function initDatabase() {
   `);
 
   // 3. Events (Aba 2 - Important Events & Deadlines)
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER, -- NULL means default template event available to all students
@@ -97,7 +172,7 @@ function initDatabase() {
   `);
 
   // 4. Grades (Aba 3 - Grade Calculations)
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS grades (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -114,7 +189,7 @@ function initDatabase() {
   `);
 
   // 5. Subjects, Topics, Subtopics (Aba 4 - Semester Subjects & Checklist)
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS subjects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER, -- NULL for template subjects, user_id for custom ones
@@ -155,50 +230,51 @@ function initDatabase() {
     );
   `);
 
-  seedInitialData();
+  await seedInitialData();
 }
 
-function seedInitialData() {
+async function seedInitialData() {
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@medplanner.com').toLowerCase().trim();
-  const adminPassword = process.env.ADMIN_PASSWORD || 'MedPlanner#2026!Admin';
+  const adminPassword = process.env.ADMIN_PASSWORD;
 
-  // Purge any test student user if present
+  // Remove contas de teste antigas (alunos @medplanner.com)
   try {
-    db.prepare(`DELETE FROM users WHERE email LIKE '%@medplanner.com' AND role != 'admin'`).run();
+    await db.prepare(`DELETE FROM users WHERE email LIKE '%@medplanner.com' AND role != 'admin'`).run();
   } catch (e) {}
 
-  // Ensure admin user exists with secure credentials
-  const existingAdmin = db.prepare(`SELECT id FROM users WHERE email = ?`).get(adminEmail);
-  const salt = bcrypt.genSaltSync(10);
-  const adminHash = bcrypt.hashSync(adminPassword, salt);
+  const existingAdmin = await db.prepare(`SELECT id, password FROM users WHERE email = ?`).get(adminEmail);
 
   if (!existingAdmin) {
-    db.prepare(`
-      INSERT INTO users (name, email, password, phone, role, birth_date, current_semester, onboarding_completed)
-      VALUES (?, ?, ?, ?, ?, '1998-05-20', 4, 1)
-    `).run('Administrador UFG', adminEmail, adminHash, '(62) 98888-0000', 'admin');
-    console.log(`Admin account initialized (${adminEmail}).`);
+    if (!adminPassword) {
+      // Sem senha definida não criamos admin: evita uma credencial padrão conhecida.
+      console.warn('ADMIN_PASSWORD não definida: conta de administrador NÃO foi criada.');
+    } else {
+      await db.prepare(`
+        INSERT INTO users (name, email, password, phone, role, birth_date, current_semester, onboarding_completed)
+        VALUES (?, ?, ?, ?, ?, '1998-05-20', 4, 1)
+      `).run('Administrador UFG', adminEmail, bcrypt.hashSync(adminPassword, 10), '(62) 98888-0000', 'admin');
+      console.log(`Admin account initialized (${adminEmail}).`);
+    }
   } else {
-    db.prepare(`UPDATE users SET password = ?, role = 'admin', name = 'Administrador UFG', birth_date = COALESCE(birth_date, '1998-05-20'), current_semester = COALESCE(current_semester, 4), onboarding_completed = 1 WHERE id = ?`).run(adminHash, existingAdmin.id);
+    // Mantém o admin sincronizado com as variáveis de ambiente (só regrava a senha se ela mudou).
+    const passwordChanged = adminPassword && !bcrypt.compareSync(adminPassword, existingAdmin.password);
+    if (passwordChanged) {
+      await db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(bcrypt.hashSync(adminPassword, 10), existingAdmin.id);
+    }
+    await db.prepare(`UPDATE users SET role = 'admin', onboarding_completed = 1 WHERE id = ?`).run(existingAdmin.id);
   }
 
-  // Ensure real student account for João Victor exists
-  const jvEmail = 'jvictor8573@gmail.com';
-  const existingJv = db.prepare(`SELECT id FROM users WHERE email = ?`).get(jvEmail);
-  if (!existingJv) {
-    const studentHash = bcrypt.hashSync('Medicina#2026', salt);
-    db.prepare(`
-      INSERT INTO users (name, email, password, phone, role, birth_date, current_semester, onboarding_completed)
-      VALUES (?, ?, ?, ?, 'student', '2004-03-15', 4, 1)
-    `).run('João Victor', jvEmail, studentHash, '(62) 99999-0000');
-    console.log(`Student account initialized (${jvEmail}).`);
-  } else {
-    db.prepare(`UPDATE users SET birth_date = COALESCE(birth_date, '2004-03-15'), current_semester = COALESCE(current_semester, 4), onboarding_completed = 1 WHERE id = ?`).run(existingJv.id);
-  }
+  // Cada carga inicial roda uma única vez (registrada em `meta`), mesmo que o admin apague os itens depois.
+  const seededOnce = async (key) => {
+    const done = await db.prepare('SELECT value FROM meta WHERE key = ?').get(key);
+    if (done) return true;
+    await db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(key, new Date().toISOString());
+    return false;
+  };
 
   // Pre-seed Subjects if empty
-  const subjectCount = db.prepare(`SELECT count(*) as count FROM subjects WHERE user_id IS NULL`).get().count;
-  if (subjectCount === 0) {
+  const subjectCount = (await db.prepare(`SELECT count(*) as count FROM subjects WHERE user_id IS NULL`).get()).count;
+  if (subjectCount === 0 && !(await seededOnce('seed_subjects'))) {
     console.log('Seeding Pre-registered Subjects (Aba 4)...');
 
     const subjectsData = [
@@ -341,44 +417,36 @@ function seedInitialData() {
       }
     ];
 
-    const insertSubject = db.prepare(`
-      INSERT INTO subjects (user_id, name, code, color, icon, description, order_index)
-      VALUES (NULL, ?, ?, ?, ?, ?, ?)
-    `);
+    await db.transaction(async (tx) => {
+      const insertSubject = tx.prepare(`
+        INSERT INTO subjects (user_id, name, code, color, icon, description, order_index)
+        VALUES (NULL, ?, ?, ?, ?, ?, ?)
+      `);
+      const insertTopic = tx.prepare(`
+        INSERT INTO topics (subject_id, name, order_index)
+        VALUES (?, ?, ?)
+      `);
+      const insertSubtopic = tx.prepare(`
+        INSERT INTO subtopics (topic_id, name, order_index)
+        VALUES (?, ?, ?)
+      `);
 
-    const insertTopic = db.prepare(`
-      INSERT INTO topics (subject_id, name, order_index)
-      VALUES (?, ?, ?)
-    `);
-
-    const insertSubtopic = db.prepare(`
-      INSERT INTO subtopics (topic_id, name, order_index)
-      VALUES (?, ?, ?)
-    `);
-
-    const tx = db.transaction(() => {
-      subjectsData.forEach((sub, sIdx) => {
-        const subRes = insertSubject.run(sub.name, sub.code, sub.color, sub.icon, sub.description, sIdx);
-        const subjectId = subRes.lastInsertRowid;
-
-        sub.topics.forEach((top, tIdx) => {
-          const topRes = insertTopic.run(subjectId, top.name, tIdx);
-          const topicId = topRes.lastInsertRowid;
-
-          top.subtopics.forEach((st, stIdx) => {
-            insertSubtopic.run(topicId, st, stIdx);
-          });
-        });
-      });
+      for (const [sIdx, sub] of subjectsData.entries()) {
+        const subRes = await insertSubject.run(sub.name, sub.code, sub.color, sub.icon, sub.description, sIdx);
+        for (const [tIdx, top] of sub.topics.entries()) {
+          const topRes = await insertTopic.run(subRes.lastInsertRowid, top.name, tIdx);
+          for (const [stIdx, st] of top.subtopics.entries()) {
+            await insertSubtopic.run(topRes.lastInsertRowid, st, stIdx);
+          }
+        }
+      }
     });
-
-    tx();
     console.log('Pre-registered Subjects, Topics and Subtopics successfully inserted!');
   }
 
   // Pre-seed Events (Aba 2) if empty
-  const eventCount = db.prepare(`SELECT count(*) as count FROM events WHERE user_id IS NULL`).get().count;
-  if (eventCount === 0) {
+  const eventCount = (await db.prepare(`SELECT count(*) as count FROM events WHERE user_id IS NULL`).get()).count;
+  if (eventCount === 0 && !(await seededOnce('seed_events'))) {
     console.log('Seeding Pre-registered Events 2026.2 (Aba 2)...');
 
     const eventsData = [
@@ -559,25 +627,22 @@ function seedInitialData() {
       }
     ];
 
-    const insertEvent = db.prepare(`
-      INSERT INTO events (user_id, title, module_or_subject, start_date, end_date, type, topics, is_custom)
-      VALUES (NULL, ?, ?, ?, ?, ?, ?, 0)
-    `);
-
-    const tx = db.transaction(() => {
-      eventsData.forEach(ev => {
-        insertEvent.run(ev.title, ev.module_or_subject, ev.start_date, ev.end_date, ev.type, ev.topics);
-      });
+    await db.transaction(async (tx) => {
+      const insertEvent = tx.prepare(`
+        INSERT INTO events (user_id, title, module_or_subject, start_date, end_date, type, topics, is_custom)
+        VALUES (NULL, ?, ?, ?, ?, ?, ?, 0)
+      `);
+      for (const ev of eventsData) {
+        await insertEvent.run(ev.title, ev.module_or_subject, ev.start_date, ev.end_date, ev.type, ev.topics);
+      }
     });
-
-    tx();
     console.log('Pre-registered Events 2026.2 successfully inserted!');
   }
 
   // Eventos adicionados depois do seed inicial (bancos já populados)
-  const hasFisioN2 = db.prepare(`SELECT count(*) as count FROM events WHERE user_id IS NULL AND title = 'Avaliação N2 de Fisiologia'`).get().count;
-  if (hasFisioN2 === 0) {
-    db.prepare(`
+  const hasFisioN2 = (await db.prepare(`SELECT count(*) as count FROM events WHERE user_id IS NULL AND title = 'Avaliação N2 de Fisiologia'`).get()).count;
+  if (hasFisioN2 === 0 && !(await seededOnce('seed_fisio_n2'))) {
+    await db.prepare(`
       INSERT INTO events (user_id, title, module_or_subject, start_date, end_date, type, topics, is_custom)
       VALUES (NULL, ?, ?, ?, NULL, 'Prova', ?, 0)
     `).run(
@@ -589,10 +654,10 @@ function seedInitialData() {
   }
 
   // Pre-seed Weekly Schedule (Aba 1): substitui as aulas padrão antigas pelo horário real (uma única vez)
-  const hasRealSchedule = db.prepare(`SELECT count(*) as count FROM classes WHERE user_id IS NULL AND subject_name = 'Semiologia'`).get().count;
-  if (hasRealSchedule === 0) {
+  const hasRealSchedule = (await db.prepare(`SELECT count(*) as count FROM classes WHERE user_id IS NULL AND subject_name = 'Semiologia'`).get()).count;
+  if (hasRealSchedule === 0 && !(await seededOnce('seed_real_schedule'))) {
     console.log('Seeding Pre-registered Weekly Schedule (Aba 1)...');
-    db.prepare(`DELETE FROM classes WHERE user_id IS NULL`).run();
+    await db.prepare(`DELETE FROM classes WHERE user_id IS NULL`).run();
 
     const CAA = 'Centro de Aulas Aroeira - CAA - UFG';
     const ICB3 = 'Instituto de Ciências Biológicas III';
@@ -618,18 +683,15 @@ function seedInitialData() {
       { day: 5, start: '14:00', end: '18:30', subject: 'IMC', room: FM, type: 'Prática', color: 'amber' }
     ];
 
-    const insertClass = db.prepare(`
-      INSERT INTO classes (user_id, day_of_week, start_time, end_time, subject_name, room, teacher, type, color)
-      VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const tx = db.transaction(() => {
-      defaultClasses.forEach(c => {
-        insertClass.run(c.day, c.start, c.end, c.subject, c.room, null, c.type, c.color);
-      });
+    await db.transaction(async (tx) => {
+      const insertClass = tx.prepare(`
+        INSERT INTO classes (user_id, day_of_week, start_time, end_time, subject_name, room, teacher, type, color)
+        VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const c of defaultClasses) {
+        await insertClass.run(c.day, c.start, c.end, c.subject, c.room, null, c.type, c.color);
+      }
     });
-
-    tx();
     console.log('Pre-registered Schedule successfully inserted!');
   }
 }
