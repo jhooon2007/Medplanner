@@ -8,6 +8,74 @@ import { GradeItem } from '@/types'
 import { Calculator, Award, AlertCircle, CheckCircle2, Save, Sparkles, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+const LEGACY_DEFAULT_SCORES: Record<string, number> = {
+  'ANA_N1_PROVA': 8.0,
+  'ANA_N1_PARTICIPACAO': 1.0,
+  'ANA_N2_TEORICA': 8.0,
+  'ANA_N2_PRATICA': 6.5,
+  'ANA_N2_PARTICIPACAO': 1.0,
+  'ANA_N2_SEMINARIO': 1.0,
+  'BIOQ_N1': 7.5,
+  'BIOQ_N2': 8.0,
+  'BIOQ_N3': 7.0,
+  'BIOQ_N4': 8.5,
+  'FISIO_A1': 7.5,
+  'FISIO_A2': 8.0,
+  'FISIO_A3': 7.0,
+  'HISTO_P1': 8.0,
+  'HISTO_P2': 7.5,
+  'HISTO_P3': 8.5,
+  'HISTO_P4': 8.0,
+  'HISTO_EXTRA': 0.5,
+  'INTEG_FORUM_1': 9.0,
+  'INTEG_FORUM_2': 8.5,
+  'INTEG_CASO_CLINICO': 8.0,
+  'IMC_RP_1': 8.5,
+  'IMC_RP_2': 9.0,
+  'IMC_RP_3': 8.0,
+  'IMC_RP_4': 8.5,
+  'IMC_RP_5': 9.0,
+  'IMC_RP_6': 8.5,
+  'IMC_HC_1': 8.0,
+  'IMC_HC_2': 8.5,
+  'IMC_TBL_1_IND': 8.0,
+  'IMC_TBL_1_GRP': 9.0,
+  'IMC_TBL_2_IND': 7.5,
+  'IMC_TBL_2_GRP': 8.5,
+  'IMC_TBL_3_IND': 8.0,
+  'IMC_TBL_3_GRP': 9.0,
+  'IMC_TBL_4_IND': 8.5,
+  'IMC_TBL_4_GRP': 9.5,
+  'IMC_TBL_5_IND': 7.0,
+  'IMC_TBL_5_GRP': 8.5,
+  'IMC_TBL_6_IND': 8.0,
+  'IMC_TBL_6_GRP': 9.0,
+  'IMC_CC_1': 8.5,
+  'IMC_CC_2': 8.0,
+  'IMC_CC_3': 9.0,
+  'IMC_CC_4': 8.5,
+  'IMC_CC_5': 8.0,
+  'IMC_CC_6': 8.5,
+}
+
+const LEGACY_CUSTOM_DISCIPLINES: Array<{ id: string; name: string; n1: number | ''; n2: number | ''; n3: number | '' }> = [
+  { id: '1', name: 'Farmacologia Médica', n1: 7.5, n2: 8.0, n3: '' },
+  { id: '2', name: 'Patologia Geral', n1: 7.0, n2: 7.5, n3: '' },
+]
+
+// Remove as notas de exemplo que versões antigas gravavam como se fossem do usuário (uma única vez)
+const stripLegacyScores = (scores: Record<string, number | ''>, flag: string): Record<string, number | ''> => {
+  try {
+    if (localStorage.getItem(flag)) return scores
+    localStorage.setItem(flag, '1')
+  } catch (e) {}
+  const cleaned = { ...scores }
+  Object.entries(LEGACY_DEFAULT_SCORES).forEach(([k, v]) => {
+    if (cleaned[k] === v) cleaned[k] = ''
+  })
+  return cleaned
+}
+
 export const GradeCalculator: React.FC = () => {
   const { token, user } = useAuth()
   const [activeModule, setActiveModule] = useState<'CHS_II' | 'IMC_II' | 'INTEGRADOR_II' | 'CUSTOM_SEMESTER'>('CHS_II')
@@ -24,12 +92,14 @@ export const GradeCalculator: React.FC = () => {
   }>>(() => {
     try {
       const saved = localStorage.getItem('medplanner_custom_calc')
-      if (saved) return JSON.parse(saved)
+      if (saved) {
+        const parsed: typeof LEGACY_CUSTOM_DISCIPLINES = JSON.parse(saved)
+        // Descarta as disciplinas de exemplo antigas se o usuário nunca as alterou
+        if (JSON.stringify(parsed) === JSON.stringify(LEGACY_CUSTOM_DISCIPLINES)) return []
+        return parsed
+      }
     } catch (e) {}
-    return [
-      { id: '1', name: 'Farmacologia Médica', n1: 7.5, n2: 8.0, n3: '' },
-      { id: '2', name: 'Patologia Geral', n1: 7.0, n2: 7.5, n3: '' },
-    ]
+    return []
   })
 
   useEffect(() => {
@@ -43,71 +113,11 @@ export const GradeCalculator: React.FC = () => {
     try {
       const saved = localStorage.getItem('medplanner_grades')
       if (saved) {
-        const parsed = JSON.parse(saved)
-        return parsed
+        return stripLegacyScores(JSON.parse(saved), 'medplanner_grades_legacy_cleaned')
       }
     } catch (e) {}
-    return {
-      // CHS II: Anatomia
-      'ANA_N1_PROVA': 8.0,
-      'ANA_N1_PARTICIPACAO': 1.0,
-      'ANA_N2_TEORICA': 8.0,
-      'ANA_N2_PRATICA': 6.5,
-      'ANA_N2_PARTICIPACAO': 1.0,
-      'ANA_N2_SEMINARIO': 1.0,
-
-      // CHS II: Bioquímica
-      'BIOQ_N1': 7.5,
-      'BIOQ_N2': 8.0,
-      'BIOQ_N3': 7.0,
-      'BIOQ_N4': 8.5,
-
-    // CHS II: Fisiologia
-    'FISIO_A1': 7.5,
-    'FISIO_A2': 8.0,
-    'FISIO_A3': 7.0,
-
-    // CHS II: Histologia
-    'HISTO_P1': 8.0,
-    'HISTO_P2': 7.5,
-    'HISTO_P3': 8.5,
-    'HISTO_P4': 8.0,
-    'HISTO_EXTRA': 0.5,
-
-    // CHS II & Integrador
-    'INTEG_FORUM_1': 9.0,
-    'INTEG_FORUM_2': 8.5,
-    'INTEG_CASO_CLINICO': 8.0,
-
-    // IMC II: M1 (6 Role Play + 2 HC)
-    'IMC_RP_1': 8.5,
-    'IMC_RP_2': 9.0,
-    'IMC_RP_3': 8.0,
-    'IMC_RP_4': 8.5,
-    'IMC_RP_5': 9.0,
-    'IMC_RP_6': 8.5,
-    'IMC_HC_1': 8.0,
-    'IMC_HC_2': 8.5,
-
-    // IMC II: M2 (6 TBLs: indiv + grupo, e 6 Casos Clínicos)
-    'IMC_TBL_1_IND': 8.0, 'IMC_TBL_1_GRP': 9.0,
-    'IMC_TBL_2_IND': 7.5, 'IMC_TBL_2_GRP': 8.5,
-    'IMC_TBL_3_IND': 8.0, 'IMC_TBL_3_GRP': 9.0,
-    'IMC_TBL_4_IND': 8.5, 'IMC_TBL_4_GRP': 9.5,
-    'IMC_TBL_5_IND': 7.0, 'IMC_TBL_5_GRP': 8.5,
-    'IMC_TBL_6_IND': 8.0, 'IMC_TBL_6_GRP': 9.0,
-
-    'IMC_CC_1': 8.5,
-    'IMC_CC_2': 8.0,
-    'IMC_CC_3': 9.0,
-    'IMC_CC_4': 8.5,
-    'IMC_CC_5': 8.0,
-    'IMC_CC_6': 8.5,
-
-    // IMC II Prova Final
-    'IMC_PROVA_FINAL': '',
-  }
-})
+    return {}
+  })
 
   // Load existing grades from DB
   useEffect(() => {
@@ -128,7 +138,7 @@ export const GradeCalculator: React.FC = () => {
                   updated[g.item_key] = g.score
                 }
               })
-              return updated
+              return stripLegacyScores(updated, 'medplanner_grades_legacy_cleaned_db')
             })
           }
         }
@@ -158,6 +168,22 @@ export const GradeCalculator: React.FC = () => {
     if (v === '' || v === undefined || isNaN(v as number)) return defaultVal
     return Number(v)
   }
+
+  const hasAny = (keys: string[]) => keys.some(k => scores[k] !== '' && scores[k] !== undefined && !isNaN(scores[k] as number))
+  const fmt = (n: number, has: boolean, digits = 2) => (has ? n.toFixed(digits) : '—')
+
+  const anaN1Keys = ['ANA_N1_PROVA', 'ANA_N1_PARTICIPACAO']
+  const anaN2Keys = ['ANA_N2_TEORICA', 'ANA_N2_PRATICA', 'ANA_N2_PARTICIPACAO', 'ANA_N2_SEMINARIO']
+  const hasAna = hasAny([...anaN1Keys, ...anaN2Keys])
+  const hasBioq = hasAny(['BIOQ_N1', 'BIOQ_N2', 'BIOQ_N3', 'BIOQ_N4'])
+  const hasFisio = hasAny(['FISIO_A1', 'FISIO_A2', 'FISIO_A3'])
+  const hasHisto = hasAny(['HISTO_P1', 'HISTO_P2', 'HISTO_P3', 'HISTO_P4', 'HISTO_EXTRA'])
+  const hasInteg = hasAny(['INTEG_FORUM_1', 'INTEG_FORUM_2', 'INTEG_CASO_CLINICO'])
+  const hasCHS = hasAna || hasBioq || hasFisio || hasHisto || hasInteg
+  const imcM1Keys = [1, 2, 3, 4, 5, 6].map(i => `IMC_RP_${i}`).concat(['IMC_HC_1', 'IMC_HC_2'])
+  const imcM2Keys = [1, 2, 3, 4, 5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`, `IMC_CC_${i}`])
+  const hasM1 = hasAny(imcM1Keys)
+  const hasM2 = hasAny(imcM2Keys)
 
   // CHS II
   const anaN1 = Math.min(10, getVal('ANA_N1_PROVA') + getVal('ANA_N1_PARTICIPACAO'))
@@ -196,7 +222,7 @@ export const GradeCalculator: React.FC = () => {
   const prodM2 = [...tblScores, ...ccScores].reduce((acc, v) => acc * v, 1)
   const mediaM2 = Math.pow(prodM2, 1 / 12)
 
-  const provaFinalIMC = scores['IMC_PROVA_FINAL'] !== '' ? Number(scores['IMC_PROVA_FINAL']) : null
+  const provaFinalIMC = scores['IMC_PROVA_FINAL'] !== '' && scores['IMC_PROVA_FINAL'] !== undefined ? Number(scores['IMC_PROVA_FINAL']) : null
   const mediaFinalIMC = provaFinalIMC !== null
     ? (mediaM1 * 0.25) + (mediaM2 * 0.25) + (provaFinalIMC * 0.50)
     : (mediaM1 * 0.25) + (mediaM2 * 0.25)
@@ -306,17 +332,17 @@ export const GradeCalculator: React.FC = () => {
                   <span className="text-xs text-slate-500 font-medium">Média mínima: 6,0</span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-                  Nota Final Calculada: {notaFinalCHS.toFixed(2)}
+                  Nota Final Calculada: {fmt(notaFinalCHS, hasCHS)}
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-xl leading-relaxed">
-                  <strong>Fórmula UFG:</strong> Média Geométrica das 5 disciplinas/módulos: Anatomia ({mediaAnatomia.toFixed(2)}), Bioquímica ({mediaBioquimica.toFixed(2)}), Fisiologia ({mediaFisiologia.toFixed(2)}), Histologia ({mediaHistologia.toFixed(2)}) e Módulo Integrador ({mediaIntegrador.toFixed(2)}).
+                  <strong>Fórmula UFG:</strong> Média Geométrica das 5 disciplinas/módulos: Anatomia ({fmt(mediaAnatomia, hasAna)}), Bioquímica ({fmt(mediaBioquimica, hasBioq)}), Fisiologia ({fmt(mediaFisiologia, hasFisio)}), Histologia ({fmt(mediaHistologia, hasHisto)}) e Módulo Integrador ({fmt(mediaIntegrador, hasInteg)}).
                 </p>
               </div>
 
               <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
                 <div className={cn(
                   "h-12 w-12 rounded-xl flex items-center justify-center font-bold text-xl",
-                  notaFinalCHS >= 6.0
+                  hasCHS && notaFinalCHS >= 6.0
                     ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
                     : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                 )}>
@@ -326,9 +352,9 @@ export const GradeCalculator: React.FC = () => {
                   <div className="text-xs text-slate-400 font-medium">Situação Acadêmica</div>
                   <div className={cn(
                     "text-base font-bold",
-                    notaFinalCHS >= 6.0 ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"
+                    !hasCHS ? "text-slate-500" : notaFinalCHS >= 6.0 ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"
                   )}>
-                    {notaFinalCHS >= 6.0 ? 'Aprovado' : 'Atenção / Recuperação'}
+                    {!hasCHS ? '—' : notaFinalCHS >= 6.0 ? 'Aprovado' : 'Atenção / Recuperação'}
                   </div>
                 </div>
               </div>
@@ -344,7 +370,7 @@ export const GradeCalculator: React.FC = () => {
                     Anatomia Humana
                   </CardTitle>
                   <Badge variant="outline" className="text-xs font-bold font-mono">
-                    Média: {mediaAnatomia.toFixed(2)}
+                    Média: {fmt(mediaAnatomia, hasAna)}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -360,7 +386,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['ANA_N1_PROVA']}
+                      value={scores['ANA_N1_PROVA'] ?? ''}
                       onChange={e => handleScoreChange('ANA_N1_PROVA', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -372,13 +398,13 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['ANA_N1_PARTICIPACAO']}
+                      value={scores['ANA_N1_PARTICIPACAO'] ?? ''}
                       onChange={e => handleScoreChange('ANA_N1_PARTICIPACAO', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
                   <div className="col-span-2 text-[11px] text-slate-400 text-right">
-                    Subtotal N1: <span className="font-semibold text-slate-700 dark:text-slate-300">{anaN1.toFixed(1)}</span>
+                    Subtotal N1: <span className="font-semibold text-slate-700 dark:text-slate-300">{fmt(anaN1, hasAny(anaN1Keys), 1)}</span>
                   </div>
                 </div>
 
@@ -390,7 +416,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['ANA_N2_TEORICA']}
+                      value={scores['ANA_N2_TEORICA'] ?? ''}
                       onChange={e => handleScoreChange('ANA_N2_TEORICA', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -402,7 +428,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="8"
-                      value={scores['ANA_N2_PRATICA']}
+                      value={scores['ANA_N2_PRATICA'] ?? ''}
                       onChange={e => handleScoreChange('ANA_N2_PRATICA', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -414,7 +440,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="1"
-                      value={scores['ANA_N2_PARTICIPACAO']}
+                      value={scores['ANA_N2_PARTICIPACAO'] ?? ''}
                       onChange={e => handleScoreChange('ANA_N2_PARTICIPACAO', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -426,13 +452,13 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="1"
-                      value={scores['ANA_N2_SEMINARIO']}
+                      value={scores['ANA_N2_SEMINARIO'] ?? ''}
                       onChange={e => handleScoreChange('ANA_N2_SEMINARIO', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
                   <div className="col-span-2 sm:col-span-4 text-[11px] text-slate-400 text-right">
-                    Subtotal N2: <span className="font-semibold text-slate-700 dark:text-slate-300">{anaN2.toFixed(1)}</span>
+                    Subtotal N2: <span className="font-semibold text-slate-700 dark:text-slate-300">{fmt(anaN2, hasAny(anaN2Keys), 1)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -446,7 +472,7 @@ export const GradeCalculator: React.FC = () => {
                     Bioquímica Médica
                   </CardTitle>
                   <Badge variant="outline" className="text-xs font-bold font-mono">
-                    Média: {mediaBioquimica.toFixed(2)}
+                    Média: {fmt(mediaBioquimica, hasBioq)}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -462,7 +488,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['BIOQ_N1']}
+                      value={scores['BIOQ_N1'] ?? ''}
                       onChange={e => handleScoreChange('BIOQ_N1', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -474,7 +500,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['BIOQ_N2']}
+                      value={scores['BIOQ_N2'] ?? ''}
                       onChange={e => handleScoreChange('BIOQ_N2', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -486,7 +512,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['BIOQ_N3']}
+                      value={scores['BIOQ_N3'] ?? ''}
                       onChange={e => handleScoreChange('BIOQ_N3', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -498,7 +524,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['BIOQ_N4']}
+                      value={scores['BIOQ_N4'] ?? ''}
                       onChange={e => handleScoreChange('BIOQ_N4', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -515,7 +541,7 @@ export const GradeCalculator: React.FC = () => {
                     Fisiologia Humana
                   </CardTitle>
                   <Badge variant="outline" className="text-xs font-bold font-mono">
-                    Média: {mediaFisiologia.toFixed(2)}
+                    Média: {fmt(mediaFisiologia, hasFisio)}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -531,7 +557,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['FISIO_A1']}
+                      value={scores['FISIO_A1'] ?? ''}
                       onChange={e => handleScoreChange('FISIO_A1', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -544,7 +570,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['FISIO_A2']}
+                      value={scores['FISIO_A2'] ?? ''}
                       onChange={e => handleScoreChange('FISIO_A2', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -557,7 +583,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['FISIO_A3']}
+                      value={scores['FISIO_A3'] ?? ''}
                       onChange={e => handleScoreChange('FISIO_A3', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -575,7 +601,7 @@ export const GradeCalculator: React.FC = () => {
                     Histologia e Embriologia
                   </CardTitle>
                   <Badge variant="outline" className="text-xs font-bold font-mono">
-                    Média: {mediaHistologia.toFixed(2)}
+                    Média: {fmt(mediaHistologia, hasHisto)}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -591,7 +617,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['HISTO_P1']}
+                      value={scores['HISTO_P1'] ?? ''}
                       onChange={e => handleScoreChange('HISTO_P1', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -603,7 +629,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['HISTO_P2']}
+                      value={scores['HISTO_P2'] ?? ''}
                       onChange={e => handleScoreChange('HISTO_P2', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -615,7 +641,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['HISTO_P3']}
+                      value={scores['HISTO_P3'] ?? ''}
                       onChange={e => handleScoreChange('HISTO_P3', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -627,7 +653,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['HISTO_P4']}
+                      value={scores['HISTO_P4'] ?? ''}
                       onChange={e => handleScoreChange('HISTO_P4', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -640,7 +666,7 @@ export const GradeCalculator: React.FC = () => {
                       min="0"
                       max="0.5"
                       placeholder="Max 0.5"
-                      value={scores['HISTO_EXTRA']}
+                      value={scores['HISTO_EXTRA'] ?? ''}
                       onChange={e => handleScoreChange('HISTO_EXTRA', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -657,7 +683,7 @@ export const GradeCalculator: React.FC = () => {
                     Módulo Integrador II (5ª componente da Média Geométrica)
                   </CardTitle>
                   <Badge variant="outline" className="text-xs font-bold font-mono">
-                    Média: {mediaIntegrador.toFixed(2)}
+                    Média: {fmt(mediaIntegrador, hasInteg)}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -673,7 +699,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['INTEG_FORUM_1']}
+                      value={scores['INTEG_FORUM_1'] ?? ''}
                       onChange={e => handleScoreChange('INTEG_FORUM_1', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -685,7 +711,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['INTEG_FORUM_2']}
+                      value={scores['INTEG_FORUM_2'] ?? ''}
                       onChange={e => handleScoreChange('INTEG_FORUM_2', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -697,7 +723,7 @@ export const GradeCalculator: React.FC = () => {
                       step="0.1"
                       min="0"
                       max="10"
-                      value={scores['INTEG_CASO_CLINICO']}
+                      value={scores['INTEG_CASO_CLINICO'] ?? ''}
                       onChange={e => handleScoreChange('INTEG_CASO_CLINICO', e.target.value)}
                       className="mt-1 h-9 text-xs"
                     />
@@ -720,12 +746,12 @@ export const GradeCalculator: React.FC = () => {
                   <span className="text-xs text-slate-500 font-medium">Fórmula: (M1 × 0,25) + (M2 × 0,25) + (Prova Final × 0,5)</span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-                  M1: {mediaM1.toFixed(2)} • M2: {mediaM2.toFixed(2)} • MF: {provaFinalIMC !== null ? mediaFinalIMC.toFixed(2) : 'Aguardando Prova Final'}
+                  M1: {fmt(mediaM1, hasM1)} • M2: {fmt(mediaM2, hasM2)} • MF: {provaFinalIMC !== null ? mediaFinalIMC.toFixed(2) : 'Aguardando Prova Final'}
                 </h2>
                 <div className="p-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-blue-200/60 dark:border-blue-900/40 text-xs sm:text-sm text-blue-800 dark:text-blue-300 font-medium flex items-center gap-2">
                   <Sparkles className="h-4 w-4 shrink-0 text-blue-500" />
                   <span>
-                    <strong>Projeção para Aprovação (Média 6,0):</strong> Você precisa tirar no mínimo <strong>{notaNecessariaPF.toFixed(2)}</strong> na Prova Final.
+                    <strong>Projeção para Aprovação (Média 6,0):</strong> Você precisa tirar no mínimo <strong>{hasM1 || hasM2 ? notaNecessariaPF.toFixed(2) : '—'}</strong> na Prova Final.
                   </span>
                 </div>
               </div>
@@ -740,7 +766,7 @@ export const GradeCalculator: React.FC = () => {
                   min="0"
                   max="10"
                   placeholder="Ex: 7.5"
-                  value={scores['IMC_PROVA_FINAL']}
+                  value={scores['IMC_PROVA_FINAL'] ?? ''}
                   onChange={e => handleScoreChange('IMC_PROVA_FINAL', e.target.value)}
                   className="mt-2 text-center text-lg font-bold"
                 />
@@ -758,7 +784,7 @@ export const GradeCalculator: React.FC = () => {
                     M1: Role Play & História Clínica
                   </CardTitle>
                   <Badge variant="outline" className="text-xs font-bold font-mono">
-                    M1 = {mediaM1.toFixed(2)}
+                    M1 = {fmt(mediaM1, hasM1)}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -779,7 +805,7 @@ export const GradeCalculator: React.FC = () => {
                           step="0.1"
                           min="0"
                           max="10"
-                          value={scores[`IMC_RP_${i}`]}
+                          value={scores[`IMC_RP_${i}`] ?? ''}
                           onChange={e => handleScoreChange(`IMC_RP_${i}`, e.target.value)}
                           className="h-8 text-xs"
                         />
@@ -800,7 +826,7 @@ export const GradeCalculator: React.FC = () => {
                         step="0.1"
                         min="0"
                         max="10"
-                        value={scores['IMC_HC_1']}
+                        value={scores['IMC_HC_1'] ?? ''}
                         onChange={e => handleScoreChange('IMC_HC_1', e.target.value)}
                         className="h-8 text-xs"
                       />
@@ -812,7 +838,7 @@ export const GradeCalculator: React.FC = () => {
                         step="0.1"
                         min="0"
                         max="10"
-                        value={scores['IMC_HC_2']}
+                        value={scores['IMC_HC_2'] ?? ''}
                         onChange={e => handleScoreChange('IMC_HC_2', e.target.value)}
                         className="h-8 text-xs"
                       />
@@ -830,7 +856,7 @@ export const GradeCalculator: React.FC = () => {
                     M2: TBLs & Casos Clínicos
                   </CardTitle>
                   <Badge variant="outline" className="text-xs font-bold font-mono">
-                    M2 = {mediaM2.toFixed(2)}
+                    M2 = {fmt(mediaM2, hasM2)}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -851,14 +877,14 @@ export const GradeCalculator: React.FC = () => {
                         <div key={i} className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
                           <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
                             <span>TBL {i}</span>
-                            <span className="text-blue-600 font-mono">{finalTbl.toFixed(1)}</span>
+                            <span className="text-blue-600 font-mono">{fmt(finalTbl, hasAny([`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]), 1)}</span>
                           </div>
                           <div className="grid grid-cols-2 gap-1.5">
                             <Input
                               type="number"
                               step="0.1"
                               placeholder="Indiv"
-                              value={scores[`IMC_TBL_${i}_IND`]}
+                              value={scores[`IMC_TBL_${i}_IND`] ?? ''}
                               onChange={e => handleScoreChange(`IMC_TBL_${i}_IND`, e.target.value)}
                               className="h-7 text-[11px]"
                             />
@@ -866,7 +892,7 @@ export const GradeCalculator: React.FC = () => {
                               type="number"
                               step="0.1"
                               placeholder="Grupo"
-                              value={scores[`IMC_TBL_${i}_GRP`]}
+                              value={scores[`IMC_TBL_${i}_GRP`] ?? ''}
                               onChange={e => handleScoreChange(`IMC_TBL_${i}_GRP`, e.target.value)}
                               className="h-7 text-[11px]"
                             />
@@ -890,7 +916,7 @@ export const GradeCalculator: React.FC = () => {
                           step="0.1"
                           min="0"
                           max="10"
-                          value={scores[`IMC_CC_${i}`]}
+                          value={scores[`IMC_CC_${i}`] ?? ''}
                           onChange={e => handleScoreChange(`IMC_CC_${i}`, e.target.value)}
                           className="h-8 text-xs"
                         />
@@ -913,7 +939,7 @@ export const GradeCalculator: React.FC = () => {
                 Módulo Integrador II
               </CardTitle>
               <Badge variant="blue" className="text-xs font-bold font-mono">
-                Média: {mediaIntegrador.toFixed(2)}
+                Média: {fmt(mediaIntegrador, hasInteg)}
               </Badge>
             </div>
             <CardDescription>
@@ -931,7 +957,7 @@ export const GradeCalculator: React.FC = () => {
                   step="0.1"
                   min="0"
                   max="10"
-                  value={scores['INTEG_FORUM_1']}
+                  value={scores['INTEG_FORUM_1'] ?? ''}
                   onChange={e => handleScoreChange('INTEG_FORUM_1', e.target.value)}
                   className="mt-1 h-9 text-xs"
                 />
@@ -946,7 +972,7 @@ export const GradeCalculator: React.FC = () => {
                   step="0.1"
                   min="0"
                   max="10"
-                  value={scores['INTEG_FORUM_2']}
+                  value={scores['INTEG_FORUM_2'] ?? ''}
                   onChange={e => handleScoreChange('INTEG_FORUM_2', e.target.value)}
                   className="mt-1 h-9 text-xs"
                 />
@@ -961,7 +987,7 @@ export const GradeCalculator: React.FC = () => {
                   step="0.1"
                   min="0"
                   max="10"
-                  value={scores['INTEG_CASO_CLINICO']}
+                  value={scores['INTEG_CASO_CLINICO'] ?? ''}
                   onChange={e => handleScoreChange('INTEG_CASO_CLINICO', e.target.value)}
                   className="mt-1 h-9 text-xs"
                 />
@@ -1018,7 +1044,8 @@ export const GradeCalculator: React.FC = () => {
               const hasN3 = d.n3 !== '' && d.n3 !== undefined
               const val3 = hasN3 ? Number(d.n3) : 0
               const media = hasN3 ? (val1 + val2 + val3) / 3 : (val1 + val2) / 2
-              const isApproved = media >= 6.0
+              const hasAnyCustom = d.n1 !== '' || d.n2 !== '' || hasN3
+              const isApproved = hasAnyCustom && media >= 6.0
 
               return (
                 <Card key={d.id} className="p-5 space-y-4 border-slate-200/90 dark:border-slate-800">
@@ -1032,8 +1059,8 @@ export const GradeCalculator: React.FC = () => {
                       className="font-bold text-sm h-8"
                       placeholder="Nome da Disciplina"
                     />
-                    <Badge variant={isApproved ? 'blue' : 'warning'} className="font-mono text-xs shrink-0">
-                      Média: {media.toFixed(2)}
+                    <Badge variant={!hasAnyCustom ? 'secondary' : isApproved ? 'blue' : 'warning'} className="font-mono text-xs shrink-0">
+                      Média: {hasAnyCustom ? media.toFixed(2) : '—'}
                     </Badge>
                   </div>
 
@@ -1089,8 +1116,8 @@ export const GradeCalculator: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
-                    <span className={cn("font-semibold", isApproved ? "text-emerald-600" : "text-amber-600")}>
-                      {isApproved ? 'Aprovado (>= 6,0)' : 'Abaixo da média'}
+                    <span className={cn("font-semibold", !hasAnyCustom ? "text-slate-500" : isApproved ? "text-emerald-600" : "text-amber-600")}>
+                      {!hasAnyCustom ? 'Sem notas lançadas' : isApproved ? 'Aprovado (>= 6,0)' : 'Abaixo da média'}
                     </span>
                     <button
                       type="button"
