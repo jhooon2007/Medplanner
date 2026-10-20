@@ -10,6 +10,22 @@ export interface User {
   onboarding_completed?: boolean | number
   created_at?: string
   completed_subtopics_count?: number
+  last_login_at?: string | null
+  grades_filled_count?: number
+  custom_events_count?: number
+  custom_classes_count?: number
+}
+
+export type AnnouncementLevel = 'info' | 'warning' | 'urgent'
+
+export interface Announcement {
+  id: number
+  title: string
+  message: string
+  level: AnnouncementLevel
+  active?: number
+  expires_at?: string | null
+  created_at?: string
 }
 
 export interface Semester {

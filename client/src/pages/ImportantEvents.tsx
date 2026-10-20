@@ -59,7 +59,7 @@ export const ImportantEvents: React.FC = () => {
         const text = await res.text()
         try {
           const data = JSON.parse(text)
-          if (data.events && data.events.length > 0) {
+          if (Array.isArray(data.events)) {
             setEvents(data.events)
             localStorage.setItem('medplanner_events', JSON.stringify(data.events))
           }
@@ -75,6 +75,10 @@ export const ImportantEvents: React.FC = () => {
   useEffect(() => {
     fetchEvents()
   }, [token])
+
+  // Eventos da turma (user_id nulo) só o administrador altera; o aluno edita apenas os que ele criou.
+  const canManage = (ev: ImportantEvent | null) =>
+    Boolean(user && ev && (user.role === 'admin' || (ev.user_id != null && ev.user_id === user.id)))
 
   // Current Date comparison
   const now = new Date()
@@ -171,6 +175,7 @@ export const ImportantEvents: React.FC = () => {
 
     const newEventItem: ImportantEvent = {
       id: editingEvent ? editingEvent.id : Date.now(),
+      user_id: editingEvent ? editingEvent.user_id : user?.id,
       title: formData.title,
       module_or_subject: formData.module_or_subject,
       start_date: formData.start_date,
@@ -205,6 +210,8 @@ export const ImportantEvents: React.FC = () => {
           },
           body: JSON.stringify(payload),
         })
+        // Recarrega do servidor para trocar o id provisório pelo id real
+        await fetchEvents()
       } catch (err) {
         console.warn('API save event skipped (saved locally):', err)
       }
@@ -459,7 +466,7 @@ export const ImportantEvents: React.FC = () => {
                       <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
                     </Button>
 
-                    {user && (
+                    {canManage(event) && (
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={e => handleOpenEdit(event, e)}
@@ -538,7 +545,7 @@ export const ImportantEvents: React.FC = () => {
               </div>
 
               <DialogFooter className="mt-6 flex justify-between items-center sm:justify-between">
-                {user ? (
+                {canManage(detailsEvent) ? (
                   <Button
                     variant="outline"
                     size="sm"

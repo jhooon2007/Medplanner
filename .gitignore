@@ -26,3 +26,7 @@ Thumbs.db
 .vscode/
 .idea/
 
+
+# Banco local (os dados reais ficam no Turso)
+server/*.db
+server/*.db-*

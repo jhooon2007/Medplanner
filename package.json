@@ -9,7 +9,8 @@
     "client": "npm run --prefix client dev",
     "build": "npm --prefix client install && npm --prefix client run build && node -e \"const fs=require('fs'); if(!fs.existsSync('dist')){fs.mkdirSync('dist',{recursive:true}); fs.cpSync('client/dist', 'dist', {recursive:true});}\"",
     "vercel-build": "npm --prefix client install && npm --prefix client run build && node -e \"const fs=require('fs'); if(!fs.existsSync('dist')){fs.mkdirSync('dist',{recursive:true}); fs.cpSync('client/dist', 'dist', {recursive:true});}\"",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "test": "node --test server/test_api.js"
   },
   "keywords": [
     "med-planner",
@@ -24,8 +25,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "concurrently": "^10.0.6",
     "cors": "^2.8.6",
     "dotenv": "^18.0.8",
