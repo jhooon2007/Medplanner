@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { GradeItem } from '@/types'
 import { Calculator, Award, AlertCircle, CheckCircle2, Save, Sparkles, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { recoverLegacyScores, recoverLegacyDisciplines } from '@/lib/legacyGrades'
 
 export const GradeCalculator: React.FC = () => {
   const { token, user } = useAuth()
@@ -26,7 +27,7 @@ export const GradeCalculator: React.FC = () => {
       const saved = localStorage.getItem('medplanner_custom_calc_v2')
       if (saved) return JSON.parse(saved)
     } catch (e) {}
-    return []
+    return recoverLegacyDisciplines()
   })
 
   useEffect(() => {
@@ -52,6 +53,17 @@ export const GradeCalculator: React.FC = () => {
   const emptyScores = (): Record<string, number | ''> =>
     Object.fromEntries(SCORE_KEYS.map(k => [k, ''])) as Record<string, number | ''>
 
+  // Notas digitadas nas versões antigas (que o navegador ainda guarda) são recuperadas uma única vez
+  const [legacyScores] = useState<Record<string, number>>(() => {
+    try {
+      return localStorage.getItem('medplanner_grades_v2') ? {} : recoverLegacyScores()
+    } catch (e) {
+      return {}
+    }
+  })
+  const [pendingLegacySync, setPendingLegacySync] = useState(() => Object.keys(legacyScores).length > 0)
+  const [serverLoaded, setServerLoaded] = useState(false)
+
   const [scores, setScores] = useState<Record<string, number | ''>>(() => {
     try {
       const saved = localStorage.getItem('medplanner_grades_v2')
@@ -59,7 +71,7 @@ export const GradeCalculator: React.FC = () => {
         return { ...emptyScores(), ...JSON.parse(saved) }
       }
     } catch (e) {}
-    return emptyScores()
+    return { ...emptyScores(), ...legacyScores }
   })
 
   // Load existing grades from DB
@@ -87,11 +99,22 @@ export const GradeCalculator: React.FC = () => {
         }
       } catch (err) {
         console.error('Error loading grades:', err)
+      } finally {
+        setServerLoaded(true)
       }
     }
 
     loadGrades()
   }, [token])
+
+  // Depois de carregar o servidor, envia as notas recuperadas do navegador para o banco (uma vez)
+  useEffect(() => {
+    if (serverLoaded && pendingLegacySync) {
+      setPendingLegacySync(false)
+      handleSaveGrades()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverLoaded, pendingLegacySync])
 
   // Auto-sync scores with localStorage
   useEffect(() => {
