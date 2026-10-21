@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react'
 import React, { useState } from 'react'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { SemesterProvider } from '@/context/SemesterContext'
@@ -100,6 +101,7 @@ export function App() {
           <MainApp />
         </SemesterProvider>
       </AuthProvider>
+      <Analytics />
     </ErrorBoundary>
   )
 }
