@@ -1,3 +1,6 @@
+export const API_UNAVAILABLE_MESSAGE =
+  'O servidor de dados não respondeu. Este endereço pode estar publicado sem a API (backend) ou ela está fora do ar.'
+
 // Chamada à API com tratamento de erro padronizado (lança Error com a mensagem do servidor).
 export async function api<T = any>(
   token: string | null,
@@ -16,10 +19,15 @@ export async function api<T = any>(
 
   const text = await res.text()
   let data: any = {}
-  try { data = text ? JSON.parse(text) : {} } catch (e) {}
+  let isJson = true
+  try { data = text ? JSON.parse(text) : {} } catch (e) { isJson = false }
 
   if (!res.ok) {
     throw new Error(data.error || `Erro ${res.status} ao falar com o servidor.`)
+  }
+  if (!isJson) {
+    // Ex.: o site foi publicado sem o servidor e a hospedagem devolveu a página inicial no lugar da API.
+    throw new Error(API_UNAVAILABLE_MESSAGE)
   }
   return data as T
 }
