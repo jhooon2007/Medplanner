@@ -41,7 +41,7 @@ export const AnnouncementBanner: React.FC = () => {
     if (!token) return
     try {
       const data = await api<{ announcements: Announcement[] }>(token, '/api/announcements')
-      setAnnouncements(data.announcements)
+      setAnnouncements(Array.isArray(data.announcements) ? data.announcements : [])
     } catch (e) {
       // Aviso é complementar: se falhar, o app segue funcionando normalmente.
     }

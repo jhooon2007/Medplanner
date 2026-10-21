@@ -5,16 +5,34 @@ const fs = require('fs');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db, initDatabase } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
-const JWT_SECRET = process.env.JWT_SECRET || (isServerless ? null : 'medplanner-dev-only-secret');
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET não configurada. Defina uma chave longa e aleatória nas variáveis de ambiente.');
+// Em produção faltar configuração não derruba a função: toda rota /api explica o que falta.
+const missingConfig = [];
+if (isServerless) {
+  const dbUrl = process.env.TURSO_DATABASE_URL;
+  if (!dbUrl) missingConfig.push('TURSO_DATABASE_URL');
+  else if (!dbUrl.startsWith('file:') && !process.env.TURSO_AUTH_TOKEN) missingConfig.push('TURSO_AUTH_TOKEN');
+  if (!process.env.JWT_SECRET) missingConfig.push('JWT_SECRET');
 }
+
+if (missingConfig.length) {
+  console.error('Configuração incompleta, faltam:', missingConfig.join(', '));
+  app.use('/api', (req, res) => {
+    res.status(503).json({
+      error: `Servidor sem configuração: faltam as variáveis ${missingConfig.join(', ')} na Vercel.`,
+      missing: missingConfig,
+    });
+  });
+  module.exports = app;
+  return; // CommonJS: encerra o carregamento deste módulo (nada abaixo precisa rodar)
+}
+
+const { db, initDatabase } = require('./db');
+const JWT_SECRET = process.env.JWT_SECRET || 'medplanner-dev-only-secret';
 
 // Initialize Database (as rotas aguardam a inicialização terminar)
 const dbReady = initDatabase();
@@ -23,6 +41,33 @@ dbReady.catch(err => console.error('Falha ao inicializar o banco:', err));
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Diagnóstico público (não expõe valores, só se cada item está configurado)
+app.get('/api/health', async (req, res) => {
+  const report = {
+    ok: false,
+    serverless: isServerless,
+    config: {
+      TURSO_DATABASE_URL: Boolean(process.env.TURSO_DATABASE_URL),
+      TURSO_AUTH_TOKEN: Boolean(process.env.TURSO_AUTH_TOKEN),
+      JWT_SECRET: Boolean(process.env.JWT_SECRET),
+      ADMIN_EMAIL: Boolean(process.env.ADMIN_EMAIL),
+      ADMIN_PASSWORD: Boolean(process.env.ADMIN_PASSWORD),
+    },
+    database: 'não testado',
+  };
+  try {
+    await dbReady;
+    await db.prepare('SELECT 1 AS ok').get();
+    report.database = 'conectado';
+    report.ok = true;
+    res.json(report);
+  } catch (err) {
+    report.database = 'erro: ' + err.message;
+    res.status(503).json(report);
+  }
+});
+
 app.use(async (req, res, next) => {
   try {
     await dbReady;

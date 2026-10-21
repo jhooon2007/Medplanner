@@ -12,10 +12,12 @@ import { AdminDashboard } from '@/pages/AdminDashboard'
 import { LoginView } from '@/pages/LoginView'
 import { AnnouncementBanner } from '@/components/layout/AnnouncementBanner'
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal'
+import { ErrorScreen } from '@/components/layout/ErrorScreen'
+import { ErrorBoundary } from '@/components/layout/ErrorBoundary'
 import { Stethoscope } from 'lucide-react'
 
 const MainApp: React.FC = () => {
-  const { user, loading } = useAuth()
+  const { user, loading, serverError, retryConnection, logout } = useAuth()
   const [activeTab, setActiveTab] = useState<string>('agenda')
 
   // Loading state
@@ -29,6 +31,18 @@ const MainApp: React.FC = () => {
           Carregando Med Planner...
         </p>
       </div>
+    )
+  }
+
+  // Sessão existe mas o servidor não respondeu direito: explica em vez de mostrar um app vazio
+  if (user && serverError) {
+    return (
+      <ErrorScreen
+        title="Não foi possível falar com o servidor"
+        message={serverError}
+        onRetry={retryConnection}
+        onLogout={logout}
+      />
     )
   }
 
@@ -80,11 +94,13 @@ const MainApp: React.FC = () => {
 
 export function App() {
   return (
-    <AuthProvider>
-      <SemesterProvider>
-        <MainApp />
-      </SemesterProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <SemesterProvider>
+          <MainApp />
+        </SemesterProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

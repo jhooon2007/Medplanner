@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { User } from '@/types'
+import { API_UNAVAILABLE_MESSAGE } from '@/lib/api'
 
 interface AuthContextType {
   user: User | null
   token: string | null
   loading: boolean
+  serverError: string | null
+  retryConnection: () => void
   login: (token: string, user: User) => void
   logout: () => void
   updateProfile: (updatedUser: User, newToken?: string) => void
@@ -24,6 +27,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   })
   const [token, setToken] = useState<string | null>(localStorage.getItem('medplanner_token'))
   const [loading, setLoading] = useState(true)
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
   const [isDark, setIsDark] = useState<boolean>(() => {
     const saved = localStorage.getItem('medplanner_theme')
     if (saved) return saved === 'dark'
@@ -55,31 +60,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const res = await fetch('/api/auth/me', {
           headers: { Authorization: `Bearer ${token}` }
         })
-        if (res.ok) {
-          const text = await res.text()
-          try {
-            const data = JSON.parse(text)
-            if (data.user) {
-              setUser(data.user)
-              localStorage.setItem('medplanner_user', JSON.stringify(data.user))
-            }
-          } catch (e) {}
+        const text = await res.text()
+        let data: any = null
+        try { data = JSON.parse(text) } catch (e) {}
+
+        if (res.ok && data?.user) {
+          setServerError(null)
+          setUser(data.user)
+          localStorage.setItem('medplanner_user', JSON.stringify(data.user))
+        } else if (res.ok) {
+          // 200 sem JSON de usuário: a hospedagem devolveu a página do site no lugar da API
+          setServerError(API_UNAVAILABLE_MESSAGE)
         } else if (res.status === 401 || res.status === 403) {
           // Token expired or forbidden
           localStorage.removeItem('medplanner_token')
           localStorage.removeItem('medplanner_user')
           setToken(null)
           setUser(null)
+        } else {
+          setServerError(data?.error || `O servidor respondeu com erro ${res.status}.`)
         }
       } catch (err) {
-        console.warn('Backend unreachable, keeping local session:', err)
+        setServerError('Sem conexão com o servidor. Verifique sua internet e tente de novo.')
       } finally {
         setLoading(false)
       }
     }
 
     fetchMe()
-  }, [token])
+  }, [token, retryKey])
+
+  const retryConnection = () => {
+    setServerError(null)
+    setLoading(true)
+    setRetryKey(k => k + 1)
+  }
 
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem('medplanner_token', newToken)
@@ -105,7 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, updateProfile, isDark, toggleTheme }}>
+    <AuthContext.Provider value={{ user, token, loading, serverError, retryConnection, login, logout, updateProfile, isDark, toggleTheme }}>
       {children}
     </AuthContext.Provider>
   )
