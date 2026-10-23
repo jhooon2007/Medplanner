@@ -1,12 +1,14 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const v = require('./validation');
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 5000;
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 
@@ -39,8 +41,14 @@ const dbReady = initDatabase();
 dbReady.catch(err => console.error('Falha ao inicializar o banco:', err));
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+// Sem CORS: o site e a API ficam no mesmo endereço, então nenhum outro site precisa chamar a API.
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+app.use(express.json({ limit: '100kb' }));
 
 // Diagnóstico público (não expõe valores, só se cada item está configurado)
 app.get('/api/health', async (req, res) => {
@@ -93,18 +101,52 @@ const upload = multer({
 
 const USER_FIELDS = 'id, name, email, phone, photo_url, role, birth_date, current_semester, onboarding_completed, created_at';
 
+// Resposta de erro padrão: mensagens de validação vão para o usuário; erros internos não vazam detalhes.
+function sendError(res, err) {
+  if (err instanceof v.ValidationError) {
+    return res.status(400).json({ error: err.message });
+  }
+  const msg = String(err && err.message || '');
+  if (/UNIQUE constraint failed: users\.email/.test(msg)) {
+    return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail.' });
+  }
+  if (/FOREIGN KEY constraint failed/.test(msg)) {
+    return res.status(400).json({ error: 'Referência inválida: o item relacionado não existe.' });
+  }
+  console.error('Erro interno:', err);
+  return res.status(500).json({ error: 'Erro interno no servidor. Tente novamente em instantes.' });
+}
+
+// Confere a assinatura real do arquivo (não só o tipo informado pelo navegador)
+function detectImageMime(buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
 async function savePhoto(userId, file) {
+  const mime = detectImageMime(file.buffer);
+  if (!mime) throw new v.ValidationError('A foto precisa ser uma imagem JPEG, PNG ou WEBP válida.');
+  // Chave aleatória: a foto não pode ser encontrada só sabendo o número do aluno
+  const key = crypto.randomBytes(24).toString('hex');
   await db.prepare(`
-    INSERT INTO user_photos (user_id, mime, data) VALUES (?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET mime = excluded.mime, data = excluded.data
-  `).run(userId, file.mimetype, file.buffer.toString('base64'));
-  const photoUrl = `/api/users/${userId}/photo?v=${Date.now()}`;
+    INSERT INTO user_photos (user_id, mime, data, photo_key) VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, photo_key = excluded.photo_key
+  `).run(userId, mime, file.buffer.toString('base64'), key);
+  const photoUrl = `/api/photos/${key}`;
   await db.prepare('UPDATE users SET photo_url = ? WHERE id = ?').run(photoUrl, userId);
   return photoUrl;
 }
 
+// tv = versão da senha; ao trocar a senha a versão sobe e os tokens antigos deixam de valer
 function issueToken(user) {
-  return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: user.id, tv: user.token_version || 0 }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+async function tokenFor(userId) {
+  const row = await db.prepare('SELECT id, token_version FROM users WHERE id = ?').get(userId);
+  return issueToken(row);
 }
 
 // Authentication Middleware: valida a assinatura e carrega o usuário (e o papel) do banco
@@ -124,16 +166,19 @@ async function authenticateToken(req, res, next) {
     }
 
     const user = decoded && decoded.id
-      ? await db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(decoded.id)
+      ? await db.prepare('SELECT id, name, email, role, token_version FROM users WHERE id = ?').get(decoded.id)
       : undefined;
     if (!user) {
       return res.status(401).json({ error: 'Conta não encontrada. Faça login novamente.' });
+    }
+    if ((decoded.tv || 0) !== (user.token_version || 0)) {
+      return res.status(401).json({ error: 'Sua senha foi alterada. Faça login novamente.' });
     }
 
     req.user = user;
     next();
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 }
 
@@ -149,13 +194,16 @@ function requireAdmin(req, res, next) {
 // 1. AUTH & PROFILE ROUTES
 // ==========================================
 
-// Foto de perfil (pública: usada em <img>, que não envia o cabeçalho Authorization)
-app.get('/api/users/:id/photo', async (req, res) => {
+// Foto de perfil. A rota é pública porque <img> não envia o cabeçalho Authorization;
+// a proteção é a chave aleatória de 48 caracteres, que só aparece para quem já vê o aluno.
+app.get('/api/photos/:key', async (req, res) => {
   try {
-    const photo = await db.prepare('SELECT mime, data FROM user_photos WHERE user_id = ?').get(parseInt(req.params.id, 10));
+    const key = String(req.params.key || '');
+    if (!/^[a-f0-9]{48}$/.test(key)) return res.status(404).end();
+    const photo = await db.prepare('SELECT mime, data FROM user_photos WHERE photo_key = ?').get(key);
     if (!photo) return res.status(404).end();
     res.set('Content-Type', photo.mime);
-    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
     res.send(Buffer.from(photo.data, 'base64'));
   } catch (err) {
     res.status(500).end();
@@ -165,16 +213,14 @@ app.get('/api/users/:id/photo', async (req, res) => {
 // Register
 app.post('/api/auth/register', upload.single('photo'), async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
+    const name = v.text(req.body.name, 'Nome', { max: 100, min: 2 });
+    const normalizedEmail = v.email(req.body.email);
+    const password = v.password(req.body.password);
+    const phone = v.text(req.body.phone, 'Telefone', { max: 30, required: false });
+    if (req.file && !detectImageMime(req.file.buffer)) {
+      throw new v.ValidationError('A foto precisa ser uma imagem JPEG, PNG ou WEBP válida.');
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
-    }
 
-    const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
     if (existingUser) {
       return res.status(400).json({ error: 'Este e-mail já está cadastrado.' });
@@ -183,7 +229,7 @@ app.post('/api/auth/register', upload.single('photo'), async (req, res) => {
     const result = await db.prepare(`
       INSERT INTO users (name, email, password, phone, role, last_login_at)
       VALUES (?, ?, ?, ?, 'student', CURRENT_TIMESTAMP)
-    `).run(name.trim(), normalizedEmail, bcrypt.hashSync(password, 10), phone || null);
+    `).run(name, normalizedEmail, bcrypt.hashSync(password, 10), phone);
 
     if (req.file) {
       await savePhoto(result.lastInsertRowid, req.file);
@@ -193,21 +239,20 @@ app.post('/api/auth/register', upload.single('photo'), async (req, res) => {
 
     res.status(201).json({
       message: 'Usuário cadastrado com sucesso!',
-      token: issueToken(user),
+      token: await tokenFor(user.id),
       user
     });
   } catch (err) {
-    console.error('Register error:', err);
-    res.status(500).json({ error: 'Erro ao cadastrar usuário: ' + err.message });
+    sendError(res, err);
   }
 });
 
 // Login
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
 
-    if (!email || !password) {
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(400).json({ error: 'Informe e-mail e senha.' });
     }
 
@@ -221,12 +266,11 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({
       message: 'Login realizado com sucesso!',
-      token: issueToken(user),
+      token: await tokenFor(user.id),
       user
     });
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Erro ao autenticar: ' + err.message });
+    sendError(res, err);
   }
 });
 
@@ -265,8 +309,8 @@ async function verifyGoogleToken({ credential, access_token }) {
 // Google Authentication
 app.post('/api/auth/google', async (req, res) => {
   try {
-    const { credential, access_token } = req.body;
-    if (!credential && !access_token) {
+    const { credential, access_token } = req.body || {};
+    if ((!credential || typeof credential !== 'string') && (!access_token || typeof access_token !== 'string')) {
       return res.status(400).json({ error: 'Credencial do Google não informada.' });
     }
 
@@ -279,11 +323,11 @@ app.post('/api/auth/google', async (req, res) => {
 
     let row = await db.prepare('SELECT * FROM users WHERE email = ?').get(google.email);
     if (!row) {
-      const randomPassword = bcrypt.hashSync(Math.random().toString(36) + Date.now(), 10);
+      const randomPassword = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
       const result = await db.prepare(`
         INSERT INTO users (name, email, password, photo_url, role)
         VALUES (?, ?, ?, ?, 'student')
-      `).run(google.name || google.email.split('@')[0], google.email, randomPassword, google.picture || null);
+      `).run((google.name || google.email.split('@')[0]).slice(0, 100), google.email, randomPassword, google.picture || null);
       row = { id: result.lastInsertRowid };
     } else if (google.picture && !row.photo_url) {
       await db.prepare('UPDATE users SET photo_url = ? WHERE id = ?').run(google.picture, row.id);
@@ -294,12 +338,11 @@ app.post('/api/auth/google', async (req, res) => {
 
     res.json({
       message: 'Autenticado via Google com sucesso!',
-      token: issueToken(user),
+      token: await tokenFor(user.id),
       user
     });
   } catch (err) {
-    console.error('Google auth error:', err);
-    res.status(500).json({ error: 'Erro no login com Google: ' + err.message });
+    sendError(res, err);
   }
 });
 
@@ -312,34 +355,54 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     }
     res.json({ user });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
+
+// O próprio aluno apaga a conta e todos os dados dele (direito de exclusão da LGPD)
+app.delete('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    if ((req.body || {}).confirm !== 'EXCLUIR') {
+      return res.status(400).json({ error: 'Para confirmar, envie a palavra EXCLUIR.' });
+    }
+    if (req.user.role === 'admin') {
+      return res.status(400).json({ error: 'Contas de administrador não podem ser excluídas por aqui. Peça a outro administrador.' });
+    }
+    await db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+    res.json({ message: 'Sua conta e todos os seus dados foram excluídos.' });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// Data de nascimento: válida, no passado e com idade plausível
+function birthDate(value) {
+  const d = v.date(value, 'Data de nascimento');
+  const year = parseInt(d.slice(0, 4), 10);
+  const today = new Date().toISOString().slice(0, 10);
+  if (d >= today || year < 1900) throw new v.ValidationError('Data de nascimento inválida.');
+  return d;
+}
 
 // Onboarding Submission (Mandatory questionnaire after account creation)
 async function handleOnboarding(req, res) {
   try {
-    const { name, phone, birth_date, current_semester } = req.body;
-
-    if (!birth_date || !current_semester) {
-      return res.status(400).json({ error: 'Data de nascimento e período acadêmico são obrigatórios.' });
-    }
-
-    const semesterNum = parseInt(current_semester, 10);
-    if (isNaN(semesterNum) || semesterNum < 1 || semesterNum > 12) {
-      return res.status(400).json({ error: 'Período acadêmico inválido. Escolha entre o 1º e o 12º semestre.' });
-    }
+    const body = req.body || {};
+    const birth = birthDate(body.birth_date);
+    const semesterNum = v.semester(body.current_semester);
+    const name = v.text(body.name, 'Nome', { max: 100, min: 2, required: false });
+    const phone = v.text(body.phone, 'Telefone', { max: 30, required: false });
 
     let query = 'UPDATE users SET birth_date = ?, current_semester = ?, onboarding_completed = 1';
-    const params = [birth_date.trim(), semesterNum];
+    const params = [birth, semesterNum];
 
-    if (name && name.trim()) {
+    if (name) {
       query += ', name = ?';
-      params.push(name.trim());
+      params.push(name);
     }
-    if (phone && phone.trim()) {
+    if (phone) {
       query += ', phone = ?';
-      params.push(phone.trim());
+      params.push(phone);
     }
 
     query += ' WHERE id = ?';
@@ -352,36 +415,40 @@ async function handleOnboarding(req, res) {
     res.json({
       message: 'Questionário de onboarding concluído com sucesso!',
       user,
-      token: issueToken(user)
+      token: await tokenFor(user.id)
     });
   } catch (err) {
-    console.error('Onboarding error:', err);
-    res.status(500).json({ error: 'Erro ao registrar respostas do onboarding: ' + err.message });
+    sendError(res, err);
   }
 }
 app.post('/api/auth/onboarding', authenticateToken, handleOnboarding);
 app.put('/api/auth/onboarding', authenticateToken, handleOnboarding);
 
-// Update profile (photo, phone, name)
+// Update profile (photo, phone, name, password)
 app.put('/api/auth/profile', authenticateToken, upload.single('photo'), async (req, res) => {
   try {
-    const { name, phone, password, birth_date, current_semester } = req.body;
+    const body = req.body || {};
     const userId = req.user.id;
+    const name = v.text(body.name, 'Nome', { max: 100, min: 2, required: false });
+    const phone = v.text(body.phone, 'Telefone', { max: 30, required: false });
+    const birth = body.birth_date ? birthDate(body.birth_date) : null;
+    const semesterNum = v.semester(body.current_semester, { required: false });
+    // Senha inválida agora gera erro em vez de ser ignorada em silêncio
+    const password = v.password(body.password, { required: false });
 
     let query = 'UPDATE users SET name = COALESCE(?, name), phone = COALESCE(?, phone)';
-    const params = [name || null, phone || null];
+    const params = [name, phone];
 
-    if (birth_date) {
+    if (birth) {
       query += ', birth_date = ?';
-      params.push(birth_date.trim());
+      params.push(birth);
     }
-    if (current_semester) {
+    if (semesterNum) {
       query += ', current_semester = ?';
-      params.push(parseInt(current_semester, 10));
+      params.push(semesterNum);
     }
-
-    if (password && password.trim().length >= 6) {
-      query += ', password = ?';
+    if (password) {
+      query += ', password = ?, token_version = token_version + 1';
       params.push(bcrypt.hashSync(password, 10));
     }
 
@@ -396,12 +463,12 @@ app.put('/api/auth/profile', authenticateToken, upload.single('photo'), async (r
     const user = await db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).get(userId);
 
     res.json({
-      message: 'Perfil atualizado com sucesso!',
+      message: password ? 'Perfil e senha atualizados! Outras sessões abertas foram encerradas.' : 'Perfil atualizado com sucesso!',
       user,
-      token: issueToken(user)
+      token: await tokenFor(userId)
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -427,7 +494,7 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 
     res.json({ users });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -459,7 +526,7 @@ app.get('/api/admin/users/:id/details', authenticateToken, requireAdmin, async (
 
     res.json({ user, grades, progress, events });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -467,33 +534,40 @@ app.get('/api/admin/users/:id/details', authenticateToken, requireAdmin, async (
 app.put('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const targetId = parseInt(req.params.id, 10);
-    const { name, email, phone, role, password, birth_date, current_semester, onboarding_completed } = req.body;
+    const body = req.body || {};
+    const existing = await db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+    if (!existing) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
-    if (role && !['student', 'admin'].includes(role)) {
-      return res.status(400).json({ error: 'Perfil inválido.' });
-    }
+    const name = v.text(body.name, 'Nome', { max: 100, min: 2, required: false });
+    const email = body.email ? v.email(body.email) : null;
+    const phone = v.text(body.phone, 'Telefone', { max: 30, required: false });
+    const role = v.oneOf(body.role, ['student', 'admin'], 'Perfil', null);
+    const birth = body.birth_date ? birthDate(body.birth_date) : null;
+    const semesterNum = v.semester(body.current_semester, { required: false });
+    const password = v.password(body.password, { required: false });
+
     if (targetId === req.user.id && role && role !== 'admin') {
       return res.status(400).json({ error: 'Você não pode remover seu próprio acesso de administrador.' });
     }
 
     let query = 'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), phone = COALESCE(?, phone), role = COALESCE(?, role)';
-    const params = [name || null, email ? email.toLowerCase().trim() : null, phone || null, role || null];
+    const params = [name, email, phone, role];
 
-    if (birth_date) {
+    if (birth) {
       query += ', birth_date = ?';
-      params.push(birth_date.trim());
+      params.push(birth);
     }
-    if (current_semester) {
+    if (semesterNum) {
       query += ', current_semester = ?';
-      params.push(parseInt(current_semester, 10));
+      params.push(semesterNum);
     }
-    if (onboarding_completed !== undefined) {
+    if (body.onboarding_completed !== undefined) {
       query += ', onboarding_completed = ?';
-      params.push(onboarding_completed ? 1 : 0);
+      params.push(body.onboarding_completed ? 1 : 0);
     }
-
-    if (password && password.trim().length >= 6) {
-      query += ', password = ?';
+    if (password) {
+      // Nova senha encerra as sessões abertas desse usuário
+      query += ', password = ?, token_version = token_version + 1';
       params.push(bcrypt.hashSync(password, 10));
     }
 
@@ -505,7 +579,7 @@ app.put('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res
     const updated = await db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).get(targetId);
     res.json({ message: 'Usuário atualizado pelo Administrador.', user: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -520,43 +594,37 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, 
     await db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
     res.json({ message: 'Usuário removido com sucesso.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Create user by Admin
 app.post('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, email, phone, role, password, birth_date, current_semester } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
-    }
-    if (role && !['student', 'admin'].includes(role)) {
-      return res.status(400).json({ error: 'Perfil inválido.' });
-    }
+    const body = req.body || {};
+    const name = v.text(body.name, 'Nome', { max: 100, min: 2 });
+    const normalizedEmail = v.email(body.email);
+    const password = v.password(body.password);
+    const phone = v.text(body.phone, 'Telefone', { max: 30, required: false });
+    const role = v.oneOf(body.role, ['student', 'admin'], 'Perfil', 'student');
+    const birth = body.birth_date ? birthDate(body.birth_date) : null;
+    const sem = v.semester(body.current_semester, { required: false }) || 1;
 
-    const normalizedEmail = email.toLowerCase().trim();
     const existing = await db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
     if (existing) {
       return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail.' });
     }
 
-    const photoUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name.trim())}`;
-    const sem = current_semester ? parseInt(current_semester, 10) : 1;
-    const bDate = birth_date ? birth_date.trim() : null;
-
+    // Sem foto: a tela mostra as iniciais (não enviamos o nome do aluno para serviços externos)
     const result = await db.prepare(`
       INSERT INTO users (name, email, password, phone, photo_url, role, birth_date, current_semester, onboarding_completed)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(name.trim(), normalizedEmail, bcrypt.hashSync(password, 10), phone || null, photoUrl, role || 'student', bDate, sem);
+      VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 1)
+    `).run(name, normalizedEmail, bcrypt.hashSync(password, 10), phone, role, birth, sem);
 
     const newUser = await db.prepare(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`).get(result.lastInsertRowid);
     res.status(201).json({ message: 'Usuário cadastrado com sucesso!', user: newUser });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -598,7 +666,7 @@ app.get('/api/admin/stats', authenticateToken, requireAdmin, async (req, res) =>
       }
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -625,7 +693,7 @@ app.get('/api/admin/health', authenticateToken, requireAdmin, async (req, res) =
       }
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -645,7 +713,7 @@ app.get('/api/announcements', authenticateToken, async (req, res) => {
     `).all(todayInBrazil());
     res.json({ announcements });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -654,27 +722,27 @@ app.get('/api/admin/announcements', authenticateToken, requireAdmin, async (req,
     const announcements = await db.prepare('SELECT * FROM announcements ORDER BY created_at DESC, id DESC').all();
     res.json({ announcements });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 app.post('/api/admin/announcements', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { title, message, level, expires_at } = req.body;
-    if (!title || !title.trim() || !message || !message.trim()) {
-      return res.status(400).json({ error: 'Título e mensagem são obrigatórios.' });
-    }
-    const lvl = ANNOUNCEMENT_LEVELS.includes(level) ? level : 'info';
+    const body = req.body || {};
+    const title = v.text(body.title, 'Título', { max: 120 });
+    const message = v.text(body.message, 'Mensagem', { max: 1000 });
+    const lvl = v.oneOf(body.level, ANNOUNCEMENT_LEVELS, 'Importância', 'info');
+    const expires = v.date(body.expires_at, 'Data para o aviso sumir', { required: false });
 
     const result = await db.prepare(`
       INSERT INTO announcements (title, message, level, expires_at, created_by)
       VALUES (?, ?, ?, ?, ?)
-    `).run(title.trim(), message.trim(), lvl, expires_at || null, req.user.id);
+    `).run(title, message, lvl, expires, req.user.id);
 
     const created = await db.prepare('SELECT * FROM announcements WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ message: 'Aviso publicado!', announcement: created });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -684,24 +752,24 @@ app.put('/api/admin/announcements/:id', authenticateToken, requireAdmin, async (
     const existing = await db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Aviso não encontrado.' });
 
-    const { title, message, level, active, expires_at } = req.body;
+    const body = req.body || {};
+    const title = body.title !== undefined ? v.text(body.title, 'Título', { max: 120 }) : existing.title;
+    const message = body.message !== undefined ? v.text(body.message, 'Mensagem', { max: 1000 }) : existing.message;
+    const level = v.oneOf(body.level, ANNOUNCEMENT_LEVELS, 'Importância', existing.level);
+    const expires = body.expires_at !== undefined
+      ? v.date(body.expires_at, 'Data para o aviso sumir', { required: false })
+      : existing.expires_at;
+
     await db.prepare(`
       UPDATE announcements
       SET title = ?, message = ?, level = ?, active = ?, expires_at = ?
       WHERE id = ?
-    `).run(
-      title !== undefined ? String(title).trim() : existing.title,
-      message !== undefined ? String(message).trim() : existing.message,
-      ANNOUNCEMENT_LEVELS.includes(level) ? level : existing.level,
-      active !== undefined ? (active ? 1 : 0) : existing.active,
-      expires_at !== undefined ? (expires_at || null) : existing.expires_at,
-      id
-    );
+    `).run(title, message, level, body.active !== undefined ? (body.active ? 1 : 0) : existing.active, expires, id);
 
     const updated = await db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
     res.json({ message: 'Aviso atualizado!', announcement: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -710,7 +778,7 @@ app.delete('/api/admin/announcements/:id', authenticateToken, requireAdmin, asyn
     await db.prepare('DELETE FROM announcements WHERE id = ?').run(parseInt(req.params.id, 10));
     res.json({ message: 'Aviso removido.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -718,36 +786,44 @@ app.delete('/api/admin/announcements/:id', authenticateToken, requireAdmin, asyn
 // Eventos da turma (valem para todos os alunos; não mexem nos eventos criados por eles)
 // ------------------------------------------
 
-const parseTopics = (topics) => (
-  Array.isArray(topics) ? topics : [topics].filter(Boolean)
-);
+const EVENT_TYPES = ['Prova', 'Seminário', 'Fórum', 'Apresentação', 'Recuperação', 'TBL', 'Trabalho', 'Outro'];
+
+// Valida um evento. Em atualização (partial), campos ausentes ficam com o valor atual.
+function parseEvent(body, existing) {
+  const b = body || {};
+  const keep = (field) => existing && b[field] === undefined;
+  const title = keep('title') ? existing.title : v.text(b.title, 'Título', { max: 200 });
+  const subject = keep('module_or_subject') ? existing.module_or_subject : v.text(b.module_or_subject, 'Matéria', { max: 200 });
+  const start = keep('start_date') ? existing.start_date : v.date(b.start_date, 'Data');
+  const end = keep('end_date') ? existing.end_date : v.date(b.end_date, 'Data final', { required: false });
+  if (end && end < start) throw new v.ValidationError('A data final não pode ser antes da data inicial.');
+  const type = keep('type') ? existing.type : v.oneOf(b.type, EVENT_TYPES, 'Tipo de evento', 'Prova');
+  const topics = keep('topics') ? existing.topics : JSON.stringify(v.topicList(b.topics));
+  return { title, subject, start, end, type, topics };
+}
 
 app.get('/api/admin/events', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const events = await db.prepare('SELECT * FROM events WHERE user_id IS NULL ORDER BY start_date ASC').all();
     res.json({ events: events.map(e => ({ ...e, topics: JSON.parse(e.topics || '[]') })) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 app.post('/api/admin/events', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { title, module_or_subject, start_date, end_date, type, topics } = req.body;
-    if (!title || !start_date || !module_or_subject) {
-      return res.status(400).json({ error: 'Título, data e matéria são obrigatórios.' });
-    }
-
+    const ev = parseEvent(req.body);
     const result = await db.prepare(`
       INSERT INTO events (user_id, title, module_or_subject, start_date, end_date, type, topics, is_custom)
       VALUES (NULL, ?, ?, ?, ?, ?, ?, 0)
-    `).run(title.trim(), module_or_subject.trim(), start_date, end_date || null, type || 'Prova', JSON.stringify(parseTopics(topics)));
+    `).run(ev.title, ev.subject, ev.start, ev.end, ev.type, ev.topics);
 
     const created = await db.prepare('SELECT * FROM events WHERE id = ?').get(result.lastInsertRowid);
     created.topics = JSON.parse(created.topics);
     res.status(201).json({ message: 'Evento da turma criado para todos os alunos.', event: created });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -757,26 +833,18 @@ app.put('/api/admin/events/:id', authenticateToken, requireAdmin, async (req, re
     const existing = await db.prepare('SELECT * FROM events WHERE id = ? AND user_id IS NULL').get(id);
     if (!existing) return res.status(404).json({ error: 'Evento da turma não encontrado.' });
 
-    const { title, module_or_subject, start_date, end_date, type, topics } = req.body;
+    const ev = parseEvent(req.body, existing);
     await db.prepare(`
       UPDATE events
       SET title = ?, module_or_subject = ?, start_date = ?, end_date = ?, type = ?, topics = ?
       WHERE id = ?
-    `).run(
-      title ? title.trim() : existing.title,
-      module_or_subject ? module_or_subject.trim() : existing.module_or_subject,
-      start_date || existing.start_date,
-      end_date !== undefined ? (end_date || null) : existing.end_date,
-      type || existing.type,
-      topics !== undefined ? JSON.stringify(parseTopics(topics)) : existing.topics,
-      id
-    );
+    `).run(ev.title, ev.subject, ev.start, ev.end, ev.type, ev.topics, id);
 
     const updated = await db.prepare('SELECT * FROM events WHERE id = ?').get(id);
     updated.topics = JSON.parse(updated.topics);
     res.json({ message: 'Evento atualizado para todos os alunos.', event: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -786,7 +854,7 @@ app.delete('/api/admin/events/:id', authenticateToken, requireAdmin, async (req,
     if (!result.changes) return res.status(404).json({ error: 'Evento da turma não encontrado.' });
     res.json({ message: 'Evento removido para todos os alunos.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -795,99 +863,121 @@ app.delete('/api/admin/events/:id', authenticateToken, requireAdmin, async (req,
 // ==========================================
 
 // Get weekly schedule
+const CLASS_TYPES = ['Teórica', 'Prática', 'TBL', 'Seminário', 'Laboratório'];
+
+function parseClass(body) {
+  const b = body || {};
+  const day = v.integer(b.day_of_week, 'Dia da semana', { min: 1, max: 6 });
+  const start = v.time(b.start_time, 'Horário de início');
+  const end = v.time(b.end_time, 'Horário de término');
+  if (end <= start) throw new v.ValidationError('O horário de término precisa ser depois do início.');
+  return {
+    day, start, end,
+    subject: v.text(b.subject_name, 'Matéria', { max: 120 }),
+    room: v.text(b.room, 'Sala', { max: 200, required: false }) || '',
+    teacher: v.text(b.teacher, 'Professor', { max: 120, required: false }) || '',
+    type: v.oneOf(b.type, CLASS_TYPES, 'Tipo de aula', 'Teórica'),
+    color: v.text(b.color, 'Cor', { max: 30, required: false }) || 'teal',
+  };
+}
+
+// Grade = aulas padrão da turma (menos as que o aluno escondeu) + aulas próprias do aluno
 app.get('/api/classes', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    // Get user-specific classes OR default template classes if user has none
-    const userClasses = await db.prepare('SELECT * FROM classes WHERE user_id = ? ORDER BY day_of_week, start_time').all(userId);
-
-    if (userClasses.length > 0) {
-      return res.json({ classes: userClasses });
-    }
-
-    // Fallback to default template classes
-    const defaultClasses = await db.prepare('SELECT * FROM classes WHERE user_id IS NULL ORDER BY day_of_week, start_time').all();
-    res.json({ classes: defaultClasses });
+    const classes = await db.prepare(`
+      SELECT c.* FROM classes c
+      WHERE c.user_id = ?
+         OR (c.user_id IS NULL AND NOT EXISTS (
+              SELECT 1 FROM hidden_classes h WHERE h.user_id = ? AND h.class_id = c.id))
+      ORDER BY c.day_of_week, c.start_time
+    `).all(req.user.id, req.user.id);
+    res.json({ classes });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Create new class
 app.post('/api/classes', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { day_of_week, start_time, end_time, subject_name, room, teacher, type, color } = req.body;
-
-    if (!day_of_week || !start_time || !end_time || !subject_name) {
-      return res.status(400).json({ error: 'Dia da semana, horários e nome da matéria são obrigatórios.' });
-    }
-
+    const c = parseClass(req.body);
     const result = await db.prepare(`
       INSERT INTO classes (user_id, day_of_week, start_time, end_time, subject_name, room, teacher, type, color)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, parseInt(day_of_week), start_time, end_time, subject_name, room || '', teacher || '', type || 'Teórica', color || 'teal');
+    `).run(req.user.id, c.day, c.start, c.end, c.subject, c.room, c.teacher, c.type, c.color);
 
     const created = await db.prepare('SELECT * FROM classes WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ message: 'Aula adicionada com sucesso!', classItem: created });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
-// Update class
+// Update class. Aula padrão editada por aluno vira uma cópia só dele (a original fica escondida para ele).
 app.put('/api/classes/:id', authenticateToken, async (req, res) => {
   try {
-    const classId = parseInt(req.params.id);
+    const classId = parseInt(req.params.id, 10);
     const userId = req.user.id;
-    const { day_of_week, start_time, end_time, subject_name, room, teacher, type, color } = req.body;
-
-    // Check if class exists and belongs to user or is default
     const existing = await db.prepare('SELECT * FROM classes WHERE id = ?').get(classId);
     if (!existing) {
       return res.status(404).json({ error: 'Aula não encontrada.' });
     }
-
-    const isOwner = existing.user_id === userId;
     const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    const isTemplate = existing.user_id === null;
+    if (!isTemplate && existing.user_id !== userId && !isAdmin) {
       return res.status(403).json({ error: 'Sem permissão para alterar esta aula.' });
+    }
+
+    const c = parseClass(req.body);
+
+    if (isTemplate && !isAdmin) {
+      const created = await db.transaction(async (tx) => {
+        const r = await tx.prepare(`
+          INSERT INTO classes (user_id, day_of_week, start_time, end_time, subject_name, room, teacher, type, color)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(userId, c.day, c.start, c.end, c.subject, c.room, c.teacher, c.type, c.color);
+        await tx.prepare('INSERT OR IGNORE INTO hidden_classes (user_id, class_id) VALUES (?, ?)').run(userId, classId);
+        return tx.prepare('SELECT * FROM classes WHERE id = ?').get(r.lastInsertRowid);
+      });
+      return res.json({ message: 'Aula ajustada só na sua grade.', classItem: created, replacedId: classId });
     }
 
     await db.prepare(`
       UPDATE classes
       SET day_of_week = ?, start_time = ?, end_time = ?, subject_name = ?, room = ?, teacher = ?, type = ?, color = ?
       WHERE id = ?
-    `).run(parseInt(day_of_week), start_time, end_time, subject_name, room || '', teacher || '', type || 'Teórica', color || 'teal', classId);
+    `).run(c.day, c.start, c.end, c.subject, c.room, c.teacher, c.type, c.color, classId);
 
     const updated = await db.prepare('SELECT * FROM classes WHERE id = ?').get(classId);
     res.json({ message: 'Aula atualizada!', classItem: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
-// Delete class
+// Delete class. Aula padrão "excluída" por aluno só é escondida da grade dele.
 app.delete('/api/classes/:id', authenticateToken, async (req, res) => {
   try {
-    const classId = parseInt(req.params.id);
+    const classId = parseInt(req.params.id, 10);
     const userId = req.user.id;
-
     const existing = await db.prepare('SELECT * FROM classes WHERE id = ?').get(classId);
     if (!existing) {
       return res.status(404).json({ error: 'Aula não encontrada.' });
     }
-
-    const isOwner = existing.user_id === userId;
     const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({ error: 'Sem permissão para deletar esta aula.' });
+
+    if (existing.user_id === null && !isAdmin) {
+      await db.prepare('INSERT OR IGNORE INTO hidden_classes (user_id, class_id) VALUES (?, ?)').run(userId, classId);
+      return res.json({ message: 'Aula removida da sua grade.', hidden: true });
+    }
+    if (existing.user_id !== userId && !isAdmin) {
+      return res.status(403).json({ error: 'Sem permissão para excluir esta aula.' });
     }
 
     await db.prepare('DELETE FROM classes WHERE id = ?').run(classId);
     res.json({ message: 'Aula removida.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -914,74 +1004,54 @@ app.get('/api/events', authenticateToken, async (req, res) => {
 
     res.json({ events: parsedEvents });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Add new event (Student or Admin)
 app.post('/api/events', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { title, module_or_subject, start_date, end_date, type, topics } = req.body;
-
-    if (!title || !start_date || !module_or_subject) {
-      return res.status(400).json({ error: 'Título, data e matéria são obrigatórios.' });
-    }
-
-    const topicsJson = Array.isArray(topics) ? JSON.stringify(topics) : JSON.stringify([topics].filter(Boolean));
-
+    const ev = parseEvent(req.body);
     const result = await db.prepare(`
       INSERT INTO events (user_id, title, module_or_subject, start_date, end_date, type, topics, is_custom)
       VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(userId, title, module_or_subject, start_date, end_date || null, type || 'Prova', topicsJson);
+    `).run(req.user.id, ev.title, ev.subject, ev.start, ev.end, ev.type, ev.topics);
 
     const created = await db.prepare('SELECT * FROM events WHERE id = ?').get(result.lastInsertRowid);
     created.topics = JSON.parse(created.topics);
-
     res.status(201).json({ message: 'Evento criado com sucesso!', event: created });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
-// Edit event date & details (Autonomous student editing for calendar changes / strikes)
+// Edit event (o aluno só altera os eventos que ele mesmo criou; os da turma são do admin)
 app.put('/api/events/:id', authenticateToken, async (req, res) => {
   try {
-    const eventId = parseInt(req.params.id);
-    const userId = req.user.id;
-    const { title, module_or_subject, start_date, end_date, type, topics } = req.body;
-
+    const eventId = parseInt(req.params.id, 10);
     const existing = await db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
     if (!existing) {
       return res.status(404).json({ error: 'Evento não encontrado.' });
     }
 
-    const isOwner = existing.user_id === userId;
+    const isOwner = existing.user_id === req.user.id;
     const isAdmin = req.user.role === 'admin';
     if (!isOwner && !isAdmin) {
       return res.status(403).json({ error: 'Sem permissão para alterar este evento.' });
     }
 
-    const topicsJson = Array.isArray(topics) ? JSON.stringify(topics) : JSON.stringify([topics].filter(Boolean));
-
-    // Update in place
+    const ev = parseEvent(req.body, existing);
     await db.prepare(`
       UPDATE events
-      SET title = COALESCE(?, title),
-          module_or_subject = COALESCE(?, module_or_subject),
-          start_date = COALESCE(?, start_date),
-          end_date = ?,
-          type = COALESCE(?, type),
-          topics = COALESCE(?, topics)
+      SET title = ?, module_or_subject = ?, start_date = ?, end_date = ?, type = ?, topics = ?
       WHERE id = ?
-    `).run(title || null, module_or_subject || null, start_date || null, end_date !== undefined ? end_date : existing.end_date, type || null, topicsJson, eventId);
+    `).run(ev.title, ev.subject, ev.start, ev.end, ev.type, ev.topics, eventId);
 
     const updated = await db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
     updated.topics = JSON.parse(updated.topics);
-
     res.json({ message: 'Evento e data atualizados!', event: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -1005,7 +1075,7 @@ app.delete('/api/events/:id', authenticateToken, async (req, res) => {
     await db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
     res.json({ message: 'Evento excluído com sucesso.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -1020,7 +1090,7 @@ app.get('/api/grades', authenticateToken, async (req, res) => {
     const grades = await db.prepare('SELECT * FROM grades WHERE user_id = ?').all(userId);
     res.json({ grades });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -1028,11 +1098,37 @@ app.get('/api/grades', authenticateToken, async (req, res) => {
 app.post('/api/grades/batch', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { gradesList } = req.body; // Array of { module, discipline, item_key, item_name, score, weight }
+    const { gradesList } = req.body || {};
 
     if (!Array.isArray(gradesList)) {
       return res.status(400).json({ error: 'gradesList deve ser uma lista de notas.' });
     }
+    if (gradesList.length > 300) {
+      return res.status(400).json({ error: 'Lista de notas grande demais.' });
+    }
+
+    // Valida tudo antes de gravar: ou salva a lista inteira, ou nada
+    const items = gradesList.map((item) => {
+      const it = item || {};
+      const raw = it.score;
+      let score = null;
+      if (raw !== undefined && raw !== null && raw !== '') {
+        score = typeof raw === 'number' ? raw : parseFloat(raw);
+        if (!Number.isFinite(score) || score < 0 || score > 10) {
+          throw new v.ValidationError(`Nota inválida em ${String(it.item_key || 'um dos campos')}: use valores de 0 a 10.`);
+        }
+      }
+      const weight = it.weight === undefined || it.weight === null ? 1.0 : Number(it.weight);
+      if (!Number.isFinite(weight) || weight < 0 || weight > 100) throw new v.ValidationError('Peso inválido.');
+      return {
+        module: v.text(it.module, 'Módulo da nota', { max: 50 }),
+        discipline: v.text(it.discipline, 'Disciplina', { max: 80, required: false }),
+        item_key: v.text(it.item_key, 'Identificador da nota', { max: 80 }),
+        item_name: v.text(it.item_name, 'Nome da nota', { max: 120, required: false }) || it.item_key,
+        score,
+        weight,
+      };
+    });
 
     await db.transaction(async (tx) => {
       const upsert = tx.prepare(`
@@ -1043,25 +1139,15 @@ app.post('/api/grades/batch', authenticateToken, async (req, res) => {
           weight = excluded.weight,
           item_name = excluded.item_name
       `);
-
-      for (const item of gradesList) {
-        const score = item.score !== undefined && item.score !== null && item.score !== '' ? parseFloat(item.score) : null;
-        await upsert.run(
-          userId,
-          item.module,
-          item.discipline || null,
-          item.item_key,
-          item.item_name,
-          Number.isNaN(score) ? null : score,
-          item.weight || 1.0
-        );
+      for (const it of items) {
+        await upsert.run(userId, it.module, it.discipline, it.item_key, it.item_name, it.score, it.weight);
       }
     });
 
     const allGrades = await db.prepare('SELECT * FROM grades WHERE user_id = ?').all(userId);
     res.json({ message: 'Notas salvas com sucesso!', grades: allGrades });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -1153,18 +1239,43 @@ app.get('/api/subjects', authenticateToken, async (req, res) => {
     res.json({ subjects: fullTree });
   } catch (err) {
     console.error('Error fetching subjects tree:', err);
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
-// Toggle checklist item
+// Matéria, assunto ou subassunto: só o dono da matéria (ou o admin) altera.
+// Matérias oficiais (user_id nulo) são da turma toda e só o admin mexe nelas.
+const canManage = (req, ownerId) => req.user.role === 'admin' || (ownerId !== null && ownerId === req.user.id);
+
+async function subjectOf(subjectId) {
+  return db.prepare('SELECT * FROM subjects WHERE id = ?').get(subjectId);
+}
+async function topicWithOwner(topicId) {
+  return db.prepare(`
+    SELECT t.*, s.user_id FROM topics t
+    JOIN subjects s ON s.id = t.subject_id
+    WHERE t.id = ?
+  `).get(topicId);
+}
+async function subtopicWithOwner(subtopicId) {
+  return db.prepare(`
+    SELECT st.*, s.user_id FROM subtopics st
+    JOIN topics t ON t.id = st.topic_id
+    JOIN subjects s ON s.id = t.subject_id
+    WHERE st.id = ?
+  `).get(subtopicId);
+}
+
+// Toggle checklist item (o aluno marca o próprio progresso em qualquer subassunto que ele enxerga)
 app.post('/api/checklist/toggle', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { subtopic_id, completed } = req.body;
+    const { subtopic_id, completed } = req.body || {};
+    const subtopicId = v.integer(subtopic_id, 'Subassunto', { min: 1, max: Number.MAX_SAFE_INTEGER });
 
-    if (!subtopic_id) {
-      return res.status(400).json({ error: 'subtopic_id é obrigatório.' });
+    const st = await subtopicWithOwner(subtopicId);
+    if (!st || (st.user_id !== null && st.user_id !== userId)) {
+      return res.status(404).json({ error: 'Subassunto não encontrado.' });
     }
 
     const isCompleted = completed ? 1 : 0;
@@ -1176,249 +1287,188 @@ app.post('/api/checklist/toggle', authenticateToken, async (req, res) => {
       ON CONFLICT(user_id, subtopic_id) DO UPDATE SET
         completed = excluded.completed,
         completed_at = excluded.completed_at
-    `).run(userId, subtopic_id, isCompleted, now);
+    `).run(userId, subtopicId, isCompleted, now);
 
-    res.json({ message: 'Progresso atualizado!', subtopic_id, completed: Boolean(isCompleted) });
+    res.json({ message: 'Progresso atualizado!', subtopic_id: subtopicId, completed: Boolean(isCompleted) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
+
+function parseSubject(body, existing) {
+  const b = body || {};
+  const keep = (f) => existing && (b[f] === undefined || b[f] === null || b[f] === '');
+  return {
+    name: keep('name') ? existing.name : v.text(b.name, 'Nome da matéria', { max: 150 }),
+    code: keep('code') ? existing.code : (v.text(b.code, 'Código', { max: 30, required: false }) || ''),
+    color: keep('color') ? existing.color : (v.text(b.color, 'Cor', { max: 30, required: false }) || 'teal'),
+    icon: keep('icon') ? existing.icon : (v.text(b.icon, 'Ícone', { max: 40, required: false }) || 'BookOpen'),
+    description: keep('description') ? existing.description : (v.text(b.description, 'Descrição', { max: 500, required: false }) || ''),
+  };
+}
 
 // Create new Subject (Student Autonomy)
 app.post('/api/subjects', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { name, code, color, icon, description } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ error: 'Nome da matéria é obrigatório.' });
-    }
-
+    const sub = parseSubject(req.body);
     const result = await db.prepare(`
       INSERT INTO subjects (user_id, name, code, color, icon, description)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(userId, name, code || '', color || 'teal', icon || 'BookOpen', description || '');
+    `).run(req.user.id, sub.name, sub.code, sub.color, sub.icon, sub.description);
 
-    const created = await db.prepare('SELECT * FROM subjects WHERE id = ?').get(result.lastInsertRowid);
+    const created = await subjectOf(result.lastInsertRowid);
     res.status(201).json({ message: 'Matéria adicionada com sucesso!', subject: created });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Update Subject
 app.put('/api/subjects/:id', authenticateToken, async (req, res) => {
   try {
-    const subjectId = parseInt(req.params.id);
-    const { name, code, color, icon, description } = req.body;
-
-    const existing = await db.prepare('SELECT * FROM subjects WHERE id = ?').get(subjectId);
+    const subjectId = parseInt(req.params.id, 10);
+    const existing = await subjectOf(subjectId);
     if (!existing) return res.status(404).json({ error: 'Matéria não encontrada.' });
-
-    const isOwner = existing.user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    if (!canManage(req, existing.user_id)) {
       return res.status(403).json({ error: 'Sem permissão para alterar esta matéria.' });
     }
 
+    const sub = parseSubject(req.body, existing);
     await db.prepare(`
-      UPDATE subjects
-      SET name = COALESCE(?, name),
-          code = COALESCE(?, code),
-          color = COALESCE(?, color),
-          icon = COALESCE(?, icon),
-          description = COALESCE(?, description)
-      WHERE id = ?
-    `).run(name || null, code || null, color || null, icon || null, description || null, subjectId);
+      UPDATE subjects SET name = ?, code = ?, color = ?, icon = ?, description = ? WHERE id = ?
+    `).run(sub.name, sub.code, sub.color, sub.icon, sub.description, subjectId);
 
-    const updated = await db.prepare('SELECT * FROM subjects WHERE id = ?').get(subjectId);
+    const updated = await subjectOf(subjectId);
     res.json({ message: 'Matéria atualizada!', subject: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Delete Subject
 app.delete('/api/subjects/:id', authenticateToken, async (req, res) => {
   try {
-    const subjectId = parseInt(req.params.id);
-
-    const existing = await db.prepare('SELECT * FROM subjects WHERE id = ?').get(subjectId);
+    const subjectId = parseInt(req.params.id, 10);
+    const existing = await subjectOf(subjectId);
     if (!existing) return res.status(404).json({ error: 'Matéria não encontrada.' });
-
-    const isOwner = existing.user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    if (!canManage(req, existing.user_id)) {
       return res.status(403).json({ error: 'Sem permissão para excluir esta matéria.' });
     }
 
     await db.prepare('DELETE FROM subjects WHERE id = ?').run(subjectId);
     res.json({ message: 'Matéria removida com sucesso.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Add Topic
 app.post('/api/subjects/:id/topics', authenticateToken, async (req, res) => {
   try {
-    const subjectId = parseInt(req.params.id);
-    const { name } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ error: 'Nome do assunto é obrigatório.' });
+    const subjectId = parseInt(req.params.id, 10);
+    const subject = await subjectOf(subjectId);
+    if (!subject) return res.status(404).json({ error: 'Matéria não encontrada.' });
+    if (!canManage(req, subject.user_id)) {
+      return res.status(403).json({ error: 'Sem permissão para adicionar assunto nesta matéria.' });
     }
+    const name = v.text((req.body || {}).name, 'Nome do assunto', { max: 150 });
 
-    const result = await db.prepare(`
-      INSERT INTO topics (subject_id, name)
-      VALUES (?, ?)
-    `).run(subjectId, name);
-
+    const result = await db.prepare('INSERT INTO topics (subject_id, name) VALUES (?, ?)').run(subjectId, name);
     const created = await db.prepare('SELECT * FROM topics WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ message: 'Assunto adicionado!', topic: created });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Update Topic
 app.put('/api/topics/:id', authenticateToken, async (req, res) => {
   try {
-    const topicId = parseInt(req.params.id);
-    const { name } = req.body;
-
-    const topic = await db.prepare(`
-      SELECT t.*, s.user_id FROM topics t
-      JOIN subjects s ON s.id = t.subject_id
-      WHERE t.id = ?
-    `).get(topicId);
+    const topicId = parseInt(req.params.id, 10);
+    const topic = await topicWithOwner(topicId);
     if (!topic) return res.status(404).json({ error: 'Assunto não encontrado.' });
-
-    const isOwner = topic.user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    if (!canManage(req, topic.user_id)) {
       return res.status(403).json({ error: 'Sem permissão para alterar este assunto.' });
     }
+    const name = v.text((req.body || {}).name, 'Nome do assunto', { max: 150 });
 
     await db.prepare('UPDATE topics SET name = ? WHERE id = ?').run(name, topicId);
     const updated = await db.prepare('SELECT * FROM topics WHERE id = ?').get(topicId);
     res.json({ message: 'Assunto atualizado!', topic: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Delete Topic
 app.delete('/api/topics/:id', authenticateToken, async (req, res) => {
   try {
-    const topicId = parseInt(req.params.id);
-
-    const topic = await db.prepare(`
-      SELECT t.*, s.user_id FROM topics t
-      JOIN subjects s ON s.id = t.subject_id
-      WHERE t.id = ?
-    `).get(topicId);
+    const topicId = parseInt(req.params.id, 10);
+    const topic = await topicWithOwner(topicId);
     if (!topic) return res.status(404).json({ error: 'Assunto não encontrado.' });
-
-    const isOwner = topic.user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    if (!canManage(req, topic.user_id)) {
       return res.status(403).json({ error: 'Sem permissão para excluir este assunto.' });
     }
 
     await db.prepare('DELETE FROM topics WHERE id = ?').run(topicId);
     res.json({ message: 'Assunto removido!' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Add Subtopic
 app.post('/api/topics/:id/subtopics', authenticateToken, async (req, res) => {
   try {
-    const topicId = parseInt(req.params.id);
-    const { name } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ error: 'Nome do subassunto é obrigatório.' });
-    }
-
-    const topic = await db.prepare(`
-      SELECT t.*, s.user_id FROM topics t
-      JOIN subjects s ON s.id = t.subject_id
-      WHERE t.id = ?
-    `).get(topicId);
+    const topicId = parseInt(req.params.id, 10);
+    const topic = await topicWithOwner(topicId);
     if (!topic) return res.status(404).json({ error: 'Assunto não encontrado.' });
-
-    const isOwner = topic.user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    if (!canManage(req, topic.user_id)) {
       return res.status(403).json({ error: 'Sem permissão para adicionar subassunto neste assunto.' });
     }
+    const name = v.text((req.body || {}).name, 'Nome do subassunto', { max: 200 });
 
-    const result = await db.prepare(`
-      INSERT INTO subtopics (topic_id, name)
-      VALUES (?, ?)
-    `).run(topicId, name);
-
+    const result = await db.prepare('INSERT INTO subtopics (topic_id, name) VALUES (?, ?)').run(topicId, name);
     const created = await db.prepare('SELECT * FROM subtopics WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ message: 'Subassunto adicionado!', subtopic: created });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Update Subtopic
 app.put('/api/subtopics/:id', authenticateToken, async (req, res) => {
   try {
-    const subtopicId = parseInt(req.params.id);
-    const { name } = req.body;
-
-    const subtopic = await db.prepare(`
-      SELECT st.*, s.user_id FROM subtopics st
-      JOIN topics t ON t.id = st.topic_id
-      JOIN subjects s ON s.id = t.subject_id
-      WHERE st.id = ?
-    `).get(subtopicId);
+    const subtopicId = parseInt(req.params.id, 10);
+    const subtopic = await subtopicWithOwner(subtopicId);
     if (!subtopic) return res.status(404).json({ error: 'Subassunto não encontrado.' });
-
-    const isOwner = subtopic.user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    if (!canManage(req, subtopic.user_id)) {
       return res.status(403).json({ error: 'Sem permissão para alterar este subassunto.' });
     }
+    const name = v.text((req.body || {}).name, 'Nome do subassunto', { max: 200 });
 
     await db.prepare('UPDATE subtopics SET name = ? WHERE id = ?').run(name, subtopicId);
     const updated = await db.prepare('SELECT * FROM subtopics WHERE id = ?').get(subtopicId);
     res.json({ message: 'Subassunto atualizado!', subtopic: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
 // Delete Subtopic
 app.delete('/api/subtopics/:id', authenticateToken, async (req, res) => {
   try {
-    const subtopicId = parseInt(req.params.id);
-
-    const subtopic = await db.prepare(`
-      SELECT st.*, s.user_id FROM subtopics st
-      JOIN topics t ON t.id = st.topic_id
-      JOIN subjects s ON s.id = t.subject_id
-      WHERE st.id = ?
-    `).get(subtopicId);
+    const subtopicId = parseInt(req.params.id, 10);
+    const subtopic = await subtopicWithOwner(subtopicId);
     if (!subtopic) return res.status(404).json({ error: 'Subassunto não encontrado.' });
-
-    const isOwner = subtopic.user_id === req.user.id;
-    const isAdmin = req.user.role === 'admin';
-    if (!isOwner && !isAdmin) {
+    if (!canManage(req, subtopic.user_id)) {
       return res.status(403).json({ error: 'Sem permissão para excluir este subassunto.' });
     }
 
     await db.prepare('DELETE FROM subtopics WHERE id = ?').run(subtopicId);
     res.json({ message: 'Subassunto removido!' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err);
   }
 });
 
@@ -1433,6 +1483,25 @@ if (fs.existsSync(clientDistPath)) {
     next();
   });
 }
+
+// Tratador de erros final (JSON malformado, corpo grande demais, upload inválido, erros inesperados)
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Dados enviados em formato inválido.' });
+  }
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Dados enviados grandes demais.' });
+  }
+  if (err instanceof multer.MulterError) {
+    const msg = err.code === 'LIMIT_FILE_SIZE' ? 'A foto pode ter no máximo 1 MB.' : 'Erro no envio da foto.';
+    return res.status(400).json({ error: msg });
+  }
+  if (err && /Apenas imagens/.test(err.message || '')) {
+    return res.status(400).json({ error: err.message });
+  }
+  sendError(res, err);
+});
 
 // Start Server (only if not running inside a Vercel serverless environment or automated test)
 if (!process.env.VERCEL && !process.env.DISABLE_SERVER_LISTEN) {

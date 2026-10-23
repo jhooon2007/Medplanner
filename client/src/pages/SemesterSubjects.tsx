@@ -51,6 +51,19 @@ export const SemesterSubjects: React.FC = () => {
   const [editingSubtopic, setEditingSubtopic] = useState<{ id?: number; topic_id: number; name: string } | null>(null)
   const [subtopicName, setSubtopicName] = useState('')
 
+  // Matérias oficiais da turma (user_id nulo) só o admin altera; o aluno edita as que ele criou
+  const canManage = (subject?: Subject | null) =>
+    Boolean(user && subject && (user.role === 'admin' || (subject.user_id != null && subject.user_id === user.id)))
+
+  // Mostra o motivo quando o servidor recusa e recarrega para a tela não mostrar algo que não foi salvo
+  const reportFailure = async (res: Response | null, fallback: string) => {
+    if (res && res.ok) return false
+    const data = res ? await res.json().catch(() => ({})) : {}
+    window.alert((data as any).error || fallback)
+    fetchSubjects()
+    return true
+  }
+
   const fetchSubjects = async () => {
     try {
       const headers: Record<string, string> = {}
@@ -221,7 +234,7 @@ export const SemesterSubjects: React.FC = () => {
       try {
         const url = editingSubject ? `/api/subjects/${editingSubject.id}` : '/api/subjects'
         const method = editingSubject ? 'PUT' : 'POST'
-        await fetch(url, {
+        const res = await fetch(url, {
           method,
           headers: {
             'Content-Type': 'application/json',
@@ -229,7 +242,11 @@ export const SemesterSubjects: React.FC = () => {
           },
           body: JSON.stringify(subjectForm)
         })
-      } catch (err) {}
+        // Recarrega para trocar o id provisório pelo id real do servidor
+        if (!(await reportFailure(res, 'Não foi possível salvar a matéria.'))) fetchSubjects()
+      } catch (err) {
+        await reportFailure(null, 'Sem conexão com o servidor. A matéria não foi salva.')
+      }
     }
   }
 
@@ -246,11 +263,14 @@ export const SemesterSubjects: React.FC = () => {
 
     if (token) {
       try {
-        await fetch(`/api/subjects/${subjectId}`, {
+        const res = await fetch(`/api/subjects/${subjectId}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` }
         })
-      } catch (err) {}
+        await reportFailure(res, 'Não foi possível excluir a matéria.')
+      } catch (err) {
+        await reportFailure(null, 'Sem conexão com o servidor. A matéria não foi excluída.')
+      }
     }
   }
 
@@ -290,6 +310,8 @@ export const SemesterSubjects: React.FC = () => {
       if (res.ok) {
         setTopicModalOpen(false)
         fetchSubjects()
+      } else {
+        await reportFailure(res, 'Não foi possível salvar o assunto.')
       }
     } catch (err) {
       console.error('Error saving topic:', err)
@@ -307,6 +329,8 @@ export const SemesterSubjects: React.FC = () => {
       })
       if (res.ok) {
         fetchSubjects()
+      } else {
+        await reportFailure(res, 'Não foi possível excluir.')
       }
     } catch (err) {
       console.error('Error deleting topic:', err)
@@ -350,6 +374,8 @@ export const SemesterSubjects: React.FC = () => {
       if (res.ok) {
         setSubtopicModalOpen(false)
         fetchSubjects()
+      } else {
+        await reportFailure(res, 'Não foi possível salvar o subassunto.')
       }
     } catch (err) {
       console.error('Error saving subtopic:', err)
@@ -367,6 +393,8 @@ export const SemesterSubjects: React.FC = () => {
       })
       if (res.ok) {
         fetchSubjects()
+      } else {
+        await reportFailure(res, 'Não foi possível excluir.')
       }
     } catch (err) {
       console.error('Error deleting subtopic:', err)
@@ -523,7 +551,7 @@ export const SemesterSubjects: React.FC = () => {
                         {s.percentage}%
                       </Badge>
 
-                      {user && (
+                      {canManage(s) && (
                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={e => handleOpenEditSubject(s, e)}
@@ -580,7 +608,7 @@ export const SemesterSubjects: React.FC = () => {
                     )}
                   </div>
 
-                  {user && (
+                  {canManage(activeSubject) && (
                     <Button
                       size="sm"
                       onClick={() => handleOpenAddTopic(activeSubject.id)}
@@ -637,7 +665,7 @@ export const SemesterSubjects: React.FC = () => {
                               {topicCompleted}/{topicTotal}
                             </span>
 
-                            {user && (
+                            {canManage(activeSubject) && (
                               <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                                 <button
                                   onClick={e => handleOpenAddSubtopic(topic.id, e)}
@@ -699,7 +727,7 @@ export const SemesterSubjects: React.FC = () => {
                                     </span>
                                   </div>
 
-                                  {user && (
+                                  {canManage(activeSubject) && (
                                     <div
                                       className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                       onClick={e => e.stopPropagation()}

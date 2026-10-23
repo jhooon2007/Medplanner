@@ -55,7 +55,7 @@ export const WeeklySchedule: React.FC = () => {
         const text = await res.text()
         try {
           const data = JSON.parse(text)
-          if (data.classes && data.classes.length > 0) {
+          if (Array.isArray(data.classes)) {
             setClasses(data.classes)
             localStorage.setItem('medplanner_classes_v2', JSON.stringify(data.classes))
           }
@@ -134,7 +134,7 @@ export const WeeklySchedule: React.FC = () => {
         const url = editingClass ? `/api/classes/${editingClass.id}` : '/api/classes'
         const method = editingClass ? 'PUT' : 'POST'
 
-        await fetch(url, {
+        const res = await fetch(url, {
           method,
           headers: {
             'Content-Type': 'application/json',
@@ -142,14 +142,25 @@ export const WeeklySchedule: React.FC = () => {
           },
           body: JSON.stringify(formData),
         })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          window.alert(data.error || 'Não foi possível salvar a aula.')
+        }
       } catch (err) {
-        console.warn('API save class skipped (saved locally):', err)
+        window.alert('Sem conexão com o servidor. A aula não foi salva.')
       }
+      // A grade oficial vira uma cópia só sua quando editada: recarrega para refletir o servidor
+      await fetchClasses()
     }
   }
 
   const handleDeleteClass = async (id: number) => {
-    if (!window.confirm('Deseja excluir esta aula?')) return
+    const target = classes.find(c => c.id === id)
+    const isOfficial = target?.user_id == null && user?.role !== 'admin'
+    const question = isOfficial
+      ? 'Remover esta aula só da sua grade? Ela continua na grade dos colegas.'
+      : 'Deseja excluir esta aula?'
+    if (!window.confirm(question)) return
 
     setClasses(prev => {
       const updated = prev.filter(c => c.id !== id)
@@ -159,13 +170,18 @@ export const WeeklySchedule: React.FC = () => {
 
     if (token) {
       try {
-        await fetch(`/api/classes/${id}`, {
+        const res = await fetch(`/api/classes/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          window.alert(data.error || 'Não foi possível excluir a aula.')
+        }
       } catch (err) {
-        console.warn('API delete class skipped (deleted locally):', err)
+        window.alert('Sem conexão com o servidor. A aula não foi excluída.')
       }
+      await fetchClasses()
     }
   }
 

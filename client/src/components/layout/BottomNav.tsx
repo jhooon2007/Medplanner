@@ -12,14 +12,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab })
   const { user } = useAuth()
 
   const navItems = [
-    { id: 'agenda', label: 'Agenda Semanal', icon: CalendarDays },
-    { id: 'eventos', label: 'Eventos Importantes', icon: Clock },
-    { id: 'notas', label: 'Cálculo de Notas', icon: Calculator },
-    { id: 'materias', label: 'Matérias do Semestre', icon: BookOpen },
+    { id: 'agenda', label: 'Agenda Semanal', short: 'Agenda', icon: CalendarDays },
+    { id: 'eventos', label: 'Eventos Importantes', short: 'Eventos', icon: Clock },
+    { id: 'notas', label: 'Cálculo de Notas', short: 'Notas', icon: Calculator },
+    { id: 'materias', label: 'Matérias do Semestre', short: 'Matérias', icon: BookOpen },
   ]
 
   if (user?.role === 'admin') {
-    navItems.push({ id: 'admin', label: 'Painel Admin', icon: ShieldCheck })
+    navItems.push({ id: 'admin', label: 'Painel Admin', short: 'Admin', icon: ShieldCheck })
   }
 
   return (
@@ -33,6 +33,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab })
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
+              aria-label={item.label}
               className={cn(
                 "flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all relative",
                 isActive
@@ -48,7 +49,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab })
               >
                 <Icon className="h-5 w-5" />
               </div>
-              <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-[65px]">{item.label}</span>
+              <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-[65px]">{item.short}</span>
               {isActive && (
                 <span className="absolute -bottom-1 h-1 w-6 rounded-full bg-blue-600" />
               )}

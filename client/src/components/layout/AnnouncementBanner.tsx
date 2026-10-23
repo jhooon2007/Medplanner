@@ -36,6 +36,7 @@ export const AnnouncementBanner: React.FC = () => {
   const { token } = useAuth()
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [dismissed, setDismissed] = useState<number[]>(readDismissed)
+  const [expanded, setExpanded] = useState(false)
 
   const load = useCallback(async () => {
     if (!token) return
@@ -65,10 +66,13 @@ export const AnnouncementBanner: React.FC = () => {
 
   const visible = announcements.filter(a => !dismissed.includes(a.id))
   if (visible.length === 0) return null
+  // Vários avisos juntos ocupariam meia tela no celular: mostra o mais recente e os outros sob demanda
+  const shown = expanded ? visible : visible.slice(0, 1)
+  const hiddenCount = visible.length - shown.length
 
   return (
     <div className="space-y-2 mb-4" aria-live="polite">
-      {visible.map(a => {
+      {shown.map(a => {
         const { box, icon: Icon } = STYLES[a.level] || STYLES.info
         return (
           <div key={a.id} className={cn('flex items-start gap-3 rounded-2xl border p-3.5 shadow-sm', box)} role="status">
@@ -87,6 +91,15 @@ export const AnnouncementBanner: React.FC = () => {
           </div>
         )
       })}
+      {visible.length > 1 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(e => !e)}
+          className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer px-1"
+        >
+          {expanded ? 'Mostrar menos avisos' : `Ver mais ${hiddenCount} ${hiddenCount === 1 ? 'aviso' : 'avisos'}`}
+        </button>
+      )}
     </div>
   )
 }
