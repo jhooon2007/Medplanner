@@ -1,5 +1,6 @@
 const { createClient } = require('@libsql/client');
 const path = require('path');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
 // Banco persistente: Turso (libSQL) em produção, arquivo SQLite local em desenvolvimento.
@@ -106,6 +107,10 @@ async function initDatabase() {
     if (!cols.includes('last_login_at')) {
       await db.exec(`ALTER TABLE users ADD COLUMN last_login_at DATETIME;`);
     }
+    // Incrementado ao trocar a senha: invalida as sessões abertas com a senha antiga
+    if (!cols.includes('token_version')) {
+      await db.exec(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0;`);
+    }
   } catch (e) {
     console.warn('Migration warning:', e.message);
   }
@@ -136,7 +141,32 @@ async function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     );
+
+    -- Aulas da grade padrão que o aluno escondeu (ou substituiu por uma cópia própria)
+    CREATE TABLE IF NOT EXISTS hidden_classes (
+      user_id INTEGER NOT NULL,
+      class_id INTEGER NOT NULL,
+      PRIMARY KEY (user_id, class_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+    );
   `);
+
+  // Fotos passam a ser servidas por uma chave aleatória (o id do aluno não revela a foto)
+  try {
+    const photoCols = (await db.prepare('PRAGMA table_info(user_photos)').all()).map(c => c.name);
+    if (!photoCols.includes('photo_key')) {
+      await db.exec(`ALTER TABLE user_photos ADD COLUMN photo_key TEXT;`);
+      const rows = await db.prepare('SELECT user_id FROM user_photos').all();
+      for (const row of rows) {
+        const key = crypto.randomBytes(24).toString('hex');
+        await db.prepare('UPDATE user_photos SET photo_key = ? WHERE user_id = ?').run(key, row.user_id);
+        await db.prepare('UPDATE users SET photo_url = ? WHERE id = ?').run(`/api/photos/${key}`, row.user_id);
+      }
+    }
+  } catch (e) {
+    console.warn('Migration warning:', e.message);
+  }
 
   // 2. Classes (Aba 1 - Weekly Schedule)
   await db.exec(`
@@ -243,9 +273,12 @@ async function seedInitialData() {
   } catch (e) {}
 
   const existingAdmin = await db.prepare(`SELECT id, password FROM users WHERE email = ?`).get(adminEmail);
+  const anyAdmin = await db.prepare(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`).get();
 
   if (!existingAdmin) {
-    if (!adminPassword) {
+    if (anyAdmin) {
+      // Já existe um admin (ex.: ele trocou o próprio e-mail no app): não criamos uma conta duplicada.
+    } else if (!adminPassword) {
       // Sem senha definida não criamos admin: evita uma credencial padrão conhecida.
       console.warn('ADMIN_PASSWORD não definida: conta de administrador NÃO foi criada.');
     } else {
@@ -256,10 +289,13 @@ async function seedInitialData() {
       console.log(`Admin account initialized (${adminEmail}).`);
     }
   } else {
-    // Mantém o admin sincronizado com as variáveis de ambiente (só regrava a senha se ela mudou).
-    const passwordChanged = adminPassword && !bcrypt.compareSync(adminPassword, existingAdmin.password);
-    if (passwordChanged) {
-      await db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(bcrypt.hashSync(adminPassword, 10), existingAdmin.id);
+    // A senha só é sobrescrita pelo ambiente quando pedido explicitamente: assim uma troca feita
+    // no app não é desfeita a cada reinício do servidor.
+    const forceReset = process.env.ADMIN_RESET_PASSWORD === 'true';
+    if (forceReset && adminPassword && !bcrypt.compareSync(adminPassword, existingAdmin.password)) {
+      await db.prepare(`UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?`)
+        .run(bcrypt.hashSync(adminPassword, 10), existingAdmin.id);
+      console.log('Senha do administrador redefinida a partir de ADMIN_PASSWORD.');
     }
     await db.prepare(`UPDATE users SET role = 'admin', onboarding_completed = 1 WHERE id = ?`).run(existingAdmin.id);
   }

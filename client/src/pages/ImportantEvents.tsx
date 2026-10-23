@@ -202,7 +202,7 @@ export const ImportantEvents: React.FC = () => {
         const url = editingEvent ? `/api/events/${editingEvent.id}` : '/api/events'
         const method = editingEvent ? 'PUT' : 'POST'
 
-        await fetch(url, {
+        const res = await fetch(url, {
           method,
           headers: {
             'Content-Type': 'application/json',
@@ -210,11 +210,15 @@ export const ImportantEvents: React.FC = () => {
           },
           body: JSON.stringify(payload),
         })
-        // Recarrega do servidor para trocar o id provisório pelo id real
-        await fetchEvents()
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          window.alert(data.error || 'Não foi possível salvar o evento.')
+        }
       } catch (err) {
-        console.warn('API save event skipped (saved locally):', err)
+        window.alert('Sem conexão com o servidor. O evento não foi salvo.')
       }
+      // Recarrega do servidor para trocar o id provisório pelo id real (ou desfazer o que falhou)
+      await fetchEvents()
     }
   }
 
@@ -230,13 +234,18 @@ export const ImportantEvents: React.FC = () => {
 
     if (token) {
       try {
-        await fetch(`/api/events/${id}`, {
+        const res = await fetch(`/api/events/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          window.alert(data.error || 'Não foi possível excluir o evento.')
+        }
       } catch (err) {
-        console.warn('API delete event skipped (deleted locally):', err)
+        window.alert('Sem conexão com o servidor. O evento não foi excluído.')
       }
+      await fetchEvents()
     }
   }
 

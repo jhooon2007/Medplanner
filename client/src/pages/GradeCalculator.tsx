@@ -14,6 +14,7 @@ export const GradeCalculator: React.FC = () => {
   const [activeModule, setActiveModule] = useState<'CHS_II' | 'IMC_II' | 'INTEGRADOR_II' | 'CUSTOM_SEMESTER'>('CHS_II')
   const [saving, setSaving] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Custom disciplines for future/other semesters
   const [customDisciplines, setCustomDisciplines] = useState<Array<{
@@ -189,6 +190,11 @@ export const GradeCalculator: React.FC = () => {
 
   const handleSaveGrades = async () => {
     if (!token) return
+    const outOfRange = Object.values(scores).some(v => v !== '' && v !== undefined && (Number(v) < 0 || Number(v) > 10))
+    if (outOfRange) {
+      setSaveError('Há uma nota fora do intervalo de 0 a 10. Corrija antes de salvar.')
+      return
+    }
     setSaving(true)
     try {
       const gradesList = Object.entries(scores).map(([key, val]) => {
@@ -221,11 +227,15 @@ export const GradeCalculator: React.FC = () => {
       })
 
       if (res.ok) {
+        setSaveError(null)
         setSavedSuccess(true)
         setTimeout(() => setSavedSuccess(false), 3000)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setSaveError(data.error || 'Não foi possível salvar as notas.')
       }
     } catch (err) {
-      console.error('Error saving grades:', err)
+      setSaveError('Sem conexão com o servidor. As notas ficaram salvas só neste aparelho.')
     } finally {
       setSaving(false)
     }
@@ -255,6 +265,12 @@ export const GradeCalculator: React.FC = () => {
           </Button>
         )}
       </div>
+
+      {saveError && (
+        <div role="alert" className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-sm dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+          {saveError}
+        </div>
+      )}
 
       {/* Module Selector Tabs */}
       <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-x-auto">
