@@ -837,7 +837,7 @@ export const GradeCalculator: React.FC = () => {
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
                     4 Notas de Roleplay:
                   </span>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                     {[1, 2, 3, 4].map(i => (
                       <div key={i}>
                         <label className="text-[11px] text-slate-400">RP {i} · {THEMES[i - 1]}</label>
@@ -942,7 +942,7 @@ export const GradeCalculator: React.FC = () => {
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
                     4 Notas de CRC:
                   </span>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                     {[1, 2, 3, 4].map(i => (
                       <div key={i}>
                         <label className="text-[11px] text-slate-400">CRC {i} · {THEMES[i - 1]}</label>
