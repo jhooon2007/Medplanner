@@ -11,7 +11,7 @@ import { recoverLegacyScores, recoverLegacyDisciplines } from '@/lib/legacyGrade
 
 export const GradeCalculator: React.FC = () => {
   const { token, user } = useAuth()
-  const [activeModule, setActiveModule] = useState<'CHS_II' | 'IMC_II' | 'INTEGRADOR_II' | 'CUSTOM_SEMESTER'>('CHS_II')
+  const [activeModule, setActiveModule] = useState<'CHS_II' | 'IMC_II' | 'INTEGRADOR_II' | 'SFC_II' | 'CUSTOM_SEMESTER'>('CHS_II')
   const [saving, setSaving] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -51,6 +51,7 @@ export const GradeCalculator: React.FC = () => {
     ...[1, 2, 3, 4, 5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
     ...[1, 2, 3, 4, 5, 6].map(i => `IMC_CC_${i}`),
     'IMC_PROVA_FINAL',
+    'SFC_N1_RAS', 'SFC_N1_TEORICA', 'SFC_N1_PROJETO', 'SFC_N2_RELATORIO', 'SFC_N2_PRATICA_UBS', 'SFC_N2_DIARIO_1', 'SFC_N2_DIARIO_2', 'SFC_N2_DIARIO_3', 'SFC_N2_DIARIO_4', 'SFC_N2_DIARIO_5', 'SFC_N2_APRESENTACAO',
   ]
   const emptyScores = (): Record<string, number | ''> =>
     Object.fromEntries(SCORE_KEYS.map(k => [k, ''])) as Record<string, number | ''>
@@ -144,14 +145,15 @@ export const GradeCalculator: React.FC = () => {
   const CHS_PREFIXES = ['ANA_', 'BIOQ_', 'FISIO_', 'HISTO_', 'INTEG_']
   const M1_PREFIXES = ['IMC_RP_', 'IMC_HC_']
   const M2_PREFIXES = ['IMC_TBL_', 'IMC_CC_']
+  const SFC_PREFIXES = ['SFC_']
   const THEMES = ['Dispneia', 'Tosse, Exp. & Cian.', 'Icterícia', 'Dispepsia', 'Diarreia', 'Alt. Urinárias']
   const hasVal = (k: string) => scores[k] !== '' && scores[k] !== undefined
 
   // CHS II
-  const anaN1 = Math.min(10, getVal('ANA_N1_PROVA') + getVal('ANA_N1_PARTICIPACAO'))
+  const anaN1 = getVal('ANA_N1_PROVA') + getVal('ANA_N1_PARTICIPACAO')
   
   // N2 Anatomia: Teórica (0-10) e Prática (prova 8 + participação 1 + seminário 1 = 10), média simples entre as duas
-  const anaN2Pratica = Math.min(10, getVal('ANA_N2_PRATICA') + getVal('ANA_N2_PARTICIPACAO') + getVal('ANA_N2_SEMINARIO'))
+  const anaN2Pratica = getVal('ANA_N2_PRATICA') + getVal('ANA_N2_PARTICIPACAO') + getVal('ANA_N2_SEMINARIO')
   const anaN2 = (getVal('ANA_N2_TEORICA') + anaN2Pratica) / 2
   const mediaAnatomia = (anaN1 + anaN2) / 2
   // Bioquímica (planilha oficial): N1 vale 1/3; os outros 2/3 são a média de N2, N3 e Teatro Metabólico (BIOQ_N4)
@@ -159,7 +161,7 @@ export const GradeCalculator: React.FC = () => {
   const mediaBioquimica = getVal('BIOQ_N1') / 3 + bioqRapha * 2 / 3
   const mediaFisiologia = (getVal('FISIO_A1') * 3.5 + getVal('FISIO_A2') * 4.0 + getVal('FISIO_A3') * 2.5) / 10
   const histoSomaProvas = (getVal('HISTO_P1') + getVal('HISTO_P2') + getVal('HISTO_P3') + getVal('HISTO_P4')) / 4
-  const mediaHistologia = Math.min(10, histoSomaProvas + Math.min(0.5, getVal('HISTO_EXTRA')))
+  const mediaHistologia = histoSomaProvas + getVal('HISTO_EXTRA')
 
   // Fórum = 70% individual + 30% grupo. Quem já tinha lançado a média direta do fórum (campo antigo)
   // mantém o valor: ele só é usado enquanto individual/grupo estiverem vazios.
@@ -172,26 +174,47 @@ export const GradeCalculator: React.FC = () => {
   const mediaIntegrador = (getVal('INTEG_CASO_CLINICO') + forumMedia(1) + forumMedia(2)) / 3
 
   // Nota final CHS II: Média geométrica das 5 disciplinas (Anatomia, Bioquímica, Fisiologia, Histologia e Módulo Integrador)
-  const prodCHS = Math.max(0.001, mediaAnatomia) *
-                  Math.max(0.001, mediaBioquimica) *
-                  Math.max(0.001, mediaFisiologia) *
-                  Math.max(0.001, mediaHistologia) *
-                  Math.max(0.001, mediaIntegrador)
+  const prodCHS = mediaAnatomia *
+                  mediaBioquimica *
+                  mediaFisiologia *
+                  mediaHistologia *
+                  mediaIntegrador
   const notaFinalCHS = Math.pow(prodCHS, 1 / 5)
+
+  // SFC II: notas na escala da planilha (0 a 20/40); no banco ficam guardadas em 0 a 10 (nota × 10 ÷ máximo)
+  const SFC_MAX: Record<string, number> = {SFC_N1_RAS: 20, SFC_N1_TEORICA: 40, SFC_N1_PROJETO: 40, SFC_N2_RELATORIO: 20, SFC_N2_PRATICA_UBS: 20, SFC_N2_DIARIO_1: 20, SFC_N2_DIARIO_2: 20, SFC_N2_DIARIO_3: 20, SFC_N2_DIARIO_4: 20, SFC_N2_DIARIO_5: 20, SFC_N2_APRESENTACAO: 40}
+  const sfcNative = (k: string) => getVal(k) * SFC_MAX[k] / 10
+  const sfcN1 = (sfcNative('SFC_N1_RAS') + sfcNative('SFC_N1_TEORICA') + sfcNative('SFC_N1_PROJETO')) / 10
+  const sfcDiarios = [1, 2, 3, 4, 5].reduce((a, i) => a + sfcNative(`SFC_N2_DIARIO_${i}`), 0) / 5
+  const sfcN2 = (sfcNative('SFC_N2_RELATORIO') + sfcNative('SFC_N2_PRATICA_UBS') + sfcDiarios + sfcNative('SFC_N2_APRESENTACAO')) / 10
+  const mediaSFC = (sfcN1 + sfcN2) / 2
+  const sfcInput = (k: string) => (
+    <Input type="number" step="0.1" min="0" max={SFC_MAX[k]} placeholder="Nota"
+      value={scores[k] === '' || scores[k] === undefined ? '' : Math.round(Number(scores[k]) * SFC_MAX[k] * 10) / 100}
+      onChange={e => handleScoreChange(k, e.target.value === '' ? '' : String(Number(e.target.value) * 10 / SFC_MAX[k]))}
+      className="h-8 text-xs" />
+  )
+  // Notas que a planilha lança de 0 a 100 (Roleplays, HC, Caso Integrador): guardadas em 0 a 10, exibidas em 0 a 100
+  const s100 = (k: string) => ({
+    max: 100,
+    value: scores[k] === '' || scores[k] === undefined ? '' : Math.round(Number(scores[k]) * 1000) / 100,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+      handleScoreChange(k, e.target.value === '' ? '' : String(Number(e.target.value) / 10)),
+  })
 
   // IMC II
   // Planilha oficial: 4 Roleplays + 2 idas ao HC (6 notas). RP 5/6 e CC 6 antigos não entram na conta.
-  const rpList = [1, 2, 3, 4].map(i => Math.max(0.001, getVal(`IMC_RP_${i}`)))
-  const hcList = [1, 2].map(i => Math.max(0.001, getVal(`IMC_HC_${i}`)))
+  const rpList = [1, 2, 3, 4].map(i => getVal(`IMC_RP_${i}`))
+  const hcList = [1, 2].map(i => getVal(`IMC_HC_${i}`))
   const prodM1 = [...rpList, ...hcList].reduce((acc, v) => acc * v, 1)
   const mediaM1 = Math.pow(prodM1, 1 / 6)
 
   const tblScores = [1, 2, 3, 4, 5, 6].map(i => {
     const ind = getVal(`IMC_TBL_${i}_IND`)
     const grp = getVal(`IMC_TBL_${i}_GRP`)
-    return Math.max(0.001, (ind * 0.7) + (grp * 0.3))
+    return (ind * 0.7) + (grp * 0.3)
   })
-  const ccScores = [1, 2, 3, 4, 5].map(i => Math.max(0.001, getVal(`IMC_CC_${i}`)))
+  const ccScores = [1, 2, 3, 4, 5].map(i => getVal(`IMC_CC_${i}`))
   const prodM2 = [...tblScores, ...ccScores].reduce((acc, v) => acc * v, 1)
   const mediaM2 = Math.pow(prodM2, 1 / 11)
 
@@ -254,6 +277,7 @@ export const GradeCalculator: React.FC = () => {
         else if (key.startsWith('HISTO_')) { moduleName = 'CHS_II'; disc = 'Histologia' }
         else if (key.startsWith('INTEG_')) { moduleName = 'INTEGRADOR_II'; disc = 'Integrador' }
         else if (key.startsWith('IMC_')) { moduleName = 'IMC_II'; disc = 'Método Clínico' }
+        else if (key.startsWith('SFC_')) { moduleName = 'SFC_II'; disc = 'Saúde, Família e Comunidade' }
 
         return {
           module: moduleName,
@@ -297,7 +321,7 @@ export const GradeCalculator: React.FC = () => {
             Cálculo de Notas
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Algoritmos oficiais da UFG (médias geométricas e ponderadas) com projeção de aprovação.
+            Fórmulas idênticas às da planilha oficial 2026.2 (médias geométricas e ponderadas) com projeção de aprovação.
           </p>
         </div>
 
@@ -325,6 +349,7 @@ export const GradeCalculator: React.FC = () => {
           { id: 'CHS_II', label: 'Corpo Humano Saudável II (CHS II)' },
           { id: 'IMC_II', label: 'Introdução ao Método Clínico II (IMC II)' },
           { id: 'INTEGRADOR_II', label: 'Módulo Integrador II' },
+          { id: 'SFC_II', label: 'Saúde, Família e Comunidade II (SFC II)' },
           { id: 'CUSTOM_SEMESTER', label: 'Outros Semestres' },
         ].map(mod => (
           <button
@@ -356,7 +381,7 @@ export const GradeCalculator: React.FC = () => {
                   Nota Final Calculada: {show(notaFinalCHS, CHS_PREFIXES)}
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-xl leading-relaxed">
-                  <strong>Fórmula UFG:</strong> Média Geométrica das 5 disciplinas/módulos: Anatomia ({show(mediaAnatomia, ['ANA_'])}), Bioquímica ({show(mediaBioquimica, ['BIOQ_'])}), Fisiologia ({show(mediaFisiologia, ['FISIO_'])}), Histologia ({show(mediaHistologia, ['HISTO_'])}) e Módulo Integrador ({show(mediaIntegrador, ['INTEG_'])}).
+                  <strong>Fórmula UFG:</strong> Raiz 5ª do produto das 5 médias (Anatomia × Bioquímica × Fisiologia × Histologia × Módulo Integrador): Anatomia ({show(mediaAnatomia, ['ANA_'])}), Bioquímica ({show(mediaBioquimica, ['BIOQ_'])}), Fisiologia ({show(mediaFisiologia, ['FISIO_'])}), Histologia ({show(mediaHistologia, ['HISTO_'])}) e Módulo Integrador ({show(mediaIntegrador, ['INTEG_'])}).
                 </p>
               </div>
 
@@ -397,7 +422,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média = (N1 + N2) / 2 • N1 (Prova Única + Part.) e N2 = (Teórica [10] + Prática [prova 8 + part. 1 + sem. 1]) / 2
+                  Média = (N1 + N2) / 2 • N1 = Prova Teórico-Prática (0 a 9) + Participação (0 a 1) • N2 = (Teórica (0 a 10) + Prática (0 a 8) + Participação (0 a 1) + Seminário (0 a 1)) / 2
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -505,7 +530,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  N1 (1/3) + média de N2, N3 e Teatro Metabólico (2/3)
+                  Média = N1 × 1/3 + [(N2 + N3 + Teatro Metabólico) / 3] × 2/3
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -578,7 +603,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  N1 (peso 3,5) • N2 (peso 4,0) • N3 (peso 2,5)
+                  Média = (N1 × 3,5 + N2 × 4,0 + N3 × 2,5) / 10
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -641,7 +666,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média das 4 avaliações (teórica e prática N1 e N2) + Roteiro (0 a 0,5)
+                  Média = (Teórica N1 + Prática N1 + Teórica N2 + Prática N2) / 4 + Roteiro (0 a 0,5)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -727,7 +752,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média do Caso Integrador e dos 2 Fóruns (cada Fórum = 70% individual + 30% grupo)
+                  Média = (Caso Integrador ÷ 10 + Fórum 1 + Fórum 2) / 3 • Fórum = 70% individual + 30% grupo
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -739,10 +764,7 @@ export const GradeCalculator: React.FC = () => {
                       type="number"
                       step="0.1"
                       min="0"
-                      max="10"
-                      placeholder="Insira sua nota"
-                      value={scores['INTEG_CASO_CLINICO']}
-                      onChange={e => handleScoreChange('INTEG_CASO_CLINICO', e.target.value)}
+                      placeholder="0 a 100" {...s100('INTEG_CASO_CLINICO')}
                       className="mt-1 h-9 text-xs"
                     />
                   </div>
@@ -810,7 +832,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média geométrica de 4 Roleplays (Dispneia, Tosse, Icterícia, Dispepsia) e 2 idas ao HC
+                  M1 = raiz 6ª do produto de 4 Roleplays e 2 idas ao HC (cada nota ÷ 10, pois são lançadas de 0 a 100)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -826,10 +848,7 @@ export const GradeCalculator: React.FC = () => {
                           type="number"
                           step="0.1"
                           min="0"
-                          max="10"
-                          placeholder="Insira sua nota"
-                          value={scores[`IMC_RP_${i}`]}
-                          onChange={e => handleScoreChange(`IMC_RP_${i}`, e.target.value)}
+                          placeholder="0 a 100" {...s100(`IMC_RP_${i}`)}
                           className="h-8 text-xs"
                         />
                       </div>
@@ -848,10 +867,7 @@ export const GradeCalculator: React.FC = () => {
                         type="number"
                         step="0.1"
                         min="0"
-                        max="10"
-                        placeholder="Insira sua nota"
-                        value={scores['IMC_HC_1']}
-                        onChange={e => handleScoreChange('IMC_HC_1', e.target.value)}
+                        placeholder="0 a 100" {...s100('IMC_HC_1')}
                         className="h-8 text-xs"
                       />
                     </div>
@@ -861,10 +877,7 @@ export const GradeCalculator: React.FC = () => {
                         type="number"
                         step="0.1"
                         min="0"
-                        max="10"
-                        placeholder="Insira sua nota"
-                        value={scores['IMC_HC_2']}
-                        onChange={e => handleScoreChange('IMC_HC_2', e.target.value)}
+                        placeholder="0 a 100" {...s100('IMC_HC_2')}
                         className="h-8 text-xs"
                       />
                     </div>
@@ -885,7 +898,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média geométrica de 6 TBLs (70% indiv + 30% grupo) e 5 CRCs
+                  M2 = raiz 11ª do produto de 6 Médias de TBL (70% indiv + 30% grupo) e 5 CRCs
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -991,7 +1004,7 @@ export const GradeCalculator: React.FC = () => {
               </Badge>
             </div>
             <CardDescription>
-              Média do Caso Integrador e dos 2 Fóruns (cada Fórum = 70% individual + 30% grupo).
+              Média = (Caso Integrador (0 a 100, ÷ 10) + Fórum 1 + Fórum 2) / 3, sendo cada Fórum = 70% individual + 30% grupo.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1005,10 +1018,7 @@ export const GradeCalculator: React.FC = () => {
                   type="number"
                   step="0.1"
                   min="0"
-                  max="10"
-                  placeholder="Insira sua nota"
-                  value={scores['INTEG_CASO_CLINICO']}
-                  onChange={e => handleScoreChange('INTEG_CASO_CLINICO', e.target.value)}
+                  placeholder="0 a 100" {...s100('INTEG_CASO_CLINICO')}
                   className="mt-1 h-9 text-xs"
                 />
               </div>
@@ -1017,8 +1027,82 @@ export const GradeCalculator: React.FC = () => {
             <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-xl text-xs text-blue-800 dark:text-blue-300">
               <p className="font-semibold mb-1">Impacto no Módulo CHS II:</p>
               <p>
-                A nota obtida no Módulo Integrador entra como multiplicador da Média Geométrica das 4 disciplinas básicas (Anatomia, Bioquímica, Fisiologia e Histologia), compondo a Nota Final de CHS II.
+                A média do Módulo Integrador é o 5º fator do produto de CHS II: Nota Final = raiz 5ª de (Anatomia × Bioquímica × Fisiologia × Histologia × Integrador).
               </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SFC II */}
+      {activeModule === 'SFC_II' && (
+        <Card className="max-w-3xl mx-auto">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base text-blue-600 dark:text-blue-400">Saúde, Família e Comunidade II</CardTitle>
+              <Badge variant="blue" className="text-xs font-bold font-mono">Média: {show(mediaSFC, SFC_PREFIXES)}</Badge>
+            </div>
+            <CardDescription>
+              Média = (N1 + N2) / 2 • N1 = (RAS + Teórica + Projeto) / 10 • N2 = (Relatório + Prática UBS + média dos 5 Diários de Campo + Apresentação Final) / 10
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl space-y-2">
+              <div className="flex justify-between text-xs font-semibold text-slate-700 dark:text-slate-300"><span>N1</span><span className="font-mono">{show(sfcN1, ['SFC_N1_'])}</span></div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <label className="text-[11px] text-slate-500">Atividade RAS (0 a 20)</label>
+                {sfcInput('SFC_N1_RAS')}
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500">Avaliação Teórica (0 a 40)</label>
+                {sfcInput('SFC_N1_TEORICA')}
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500">Projeto de Intervenção na Comunidade (0 a 40)</label>
+                {sfcInput('SFC_N1_PROJETO')}
+              </div>
+              </div>
+            </div>
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl space-y-2">
+              <div className="flex justify-between text-xs font-semibold text-slate-700 dark:text-slate-300"><span>N2</span><span className="font-mono">{show(sfcN2, ['SFC_N2_'])}</span></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-[11px] text-slate-500">Relatório Individual (visita) (0 a 20)</label>
+                {sfcInput('SFC_N2_RELATORIO')}
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500">Aval. da Prática na UBS (0 a 20)</label>
+                {sfcInput('SFC_N2_PRATICA_UBS')}
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500">Apresentação Final UBS (0 a 40)</label>
+                {sfcInput('SFC_N2_APRESENTACAO')}
+              </div>
+              </div>
+              <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 pt-1">Diários de Campo (média: {show(sfcDiarios, ['SFC_N2_DIARIO_'])})</div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                <div>
+                  <label className="text-[11px] text-slate-500">Diário 1 (0 a 20)</label>
+                  {sfcInput('SFC_N2_DIARIO_1')}
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500">Diário 2 (0 a 20)</label>
+                  {sfcInput('SFC_N2_DIARIO_2')}
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500">Diário 3 (0 a 20)</label>
+                  {sfcInput('SFC_N2_DIARIO_3')}
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500">Diário 4 (0 a 20)</label>
+                  {sfcInput('SFC_N2_DIARIO_4')}
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500">Diário 5 (0 a 20)</label>
+                  {sfcInput('SFC_N2_DIARIO_5')}
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
