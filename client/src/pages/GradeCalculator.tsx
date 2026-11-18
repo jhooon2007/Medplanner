@@ -148,9 +148,9 @@ export const GradeCalculator: React.FC = () => {
   const SFC_PREFIXES = ['SFC_']
   // Itens que não existem mais: continuam guardados, mas ficam fora do cálculo
   const RETIRED_KEYS = [
-    'IMC_RP_3', 'IMC_RP_4', 'IMC_RP_5', 'IMC_RP_6',
+    'IMC_RP_5', 'IMC_RP_6',
     ...[5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
-    'IMC_CC_4', 'IMC_CC_5', 'IMC_CC_6',
+    'IMC_CC_5', 'IMC_CC_6',
   ]
   const retiredLabel = (k: string) => {
     const m = k.match(/^IMC_(RP|CC|TBL)_(\d)(?:_(IND|GRP))?$/)
@@ -214,20 +214,20 @@ export const GradeCalculator: React.FC = () => {
   })
 
   // IMC II
-  // Neste semestre: 2 Roleplays + 2 idas ao HC (4 notas), 4 TBLs e 3 CRCs. As notas dos itens retirados ficam guardadas, fora da conta.
-  const rpList = [1, 2].map(i => getVal(`IMC_RP_${i}`))
+  // Neste semestre: 4 Roleplays + 2 idas ao HC (6 notas), 4 TBLs e 4 CRCs. As notas dos itens retirados ficam guardadas, fora da conta.
+  const rpList = [1, 2, 3, 4].map(i => getVal(`IMC_RP_${i}`))
   const hcList = [1, 2].map(i => getVal(`IMC_HC_${i}`))
   const prodM1 = [...rpList, ...hcList].reduce((acc, v) => acc * v, 1)
-  const mediaM1 = Math.pow(prodM1, 1 / 4)
+  const mediaM1 = Math.pow(prodM1, 1 / 6)
 
   const tblScores = [1, 2, 3, 4].map(i => {
     const ind = getVal(`IMC_TBL_${i}_IND`)
     const grp = getVal(`IMC_TBL_${i}_GRP`)
     return (ind * 0.7) + (grp * 0.3)
   })
-  const ccScores = [1, 2, 3].map(i => getVal(`IMC_CC_${i}`))
+  const ccScores = [1, 2, 3, 4].map(i => getVal(`IMC_CC_${i}`))
   const prodM2 = [...tblScores, ...ccScores].reduce((acc, v) => acc * v, 1)
-  const mediaM2 = Math.pow(prodM2, 1 / 7)
+  const mediaM2 = Math.pow(prodM2, 1 / 8)
 
   const provaFinalIMC = scores['IMC_PROVA_FINAL'] !== '' ? Number(scores['IMC_PROVA_FINAL']) : null
   const mediaFinalIMC = provaFinalIMC !== null
@@ -840,16 +840,16 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  M1 = raiz 4ª do produto de 2 Roleplays e 2 idas ao HC (cada nota ÷ 10, pois são lançadas de 0 a 100)
+                  M1 = raiz 6ª do produto de 4 Roleplays e 2 idas ao HC (cada nota ÷ 10, pois são lançadas de 0 a 100)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    2 Notas de Roleplay:
+                    4 Notas de Roleplay:
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {[1, 2].map(i => (
+                    {[1, 2, 3, 4].map(i => (
                       <div key={i}>
                         <label className="text-[11px] text-slate-400">RP {i} · {THEMES[i - 1]}</label>
                         <Input
@@ -906,7 +906,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  M2 = raiz 7ª do produto de 4 Médias de TBL (70% indiv + 30% grupo) e 3 CRCs
+                  M2 = raiz 8ª do produto de 4 Médias de TBL (70% indiv + 30% grupo) e 4 CRCs
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -951,10 +951,10 @@ export const GradeCalculator: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    3 Notas de CRC:
+                    4 Notas de CRC:
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3].map(i => (
+                    {[1, 2, 3, 4].map(i => (
                       <div key={i}>
                         <label className="text-[11px] text-slate-400">CRC {i} · {THEMES[i - 1]}</label>
                         <Input
@@ -979,7 +979,7 @@ export const GradeCalculator: React.FC = () => {
                 <CardHeader>
                   <CardTitle className="text-sm text-amber-700 dark:text-amber-400">Notas antigas guardadas (fora do cálculo)</CardTitle>
                   <CardDescription>
-                    Neste semestre valem 2 Roleplays, 4 TBLs e 3 CRCs. Estas notas que você lançou antes continuam salvas, mas não entram na média.
+                    Neste semestre valem 4 Roleplays, 4 TBLs e 4 CRCs. Estas notas que você lançou antes continuam salvas, mas não entram na média.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
