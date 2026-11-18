@@ -840,7 +840,7 @@ export const GradeCalculator: React.FC = () => {
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                     {[1, 2, 3, 4].map(i => (
                       <div key={i}>
-                        <label className="text-[11px] text-slate-400">RP {i} · {THEMES[i - 1]}</label>
+                        <label className="text-[11px] text-slate-400 block truncate">RP {i} · {THEMES[i - 1]}</label>
                         <Input
                           type="number"
                           step="0.1"
@@ -945,7 +945,7 @@ export const GradeCalculator: React.FC = () => {
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                     {[1, 2, 3, 4].map(i => (
                       <div key={i}>
-                        <label className="text-[11px] text-slate-400">CRC {i} · {THEMES[i - 1]}</label>
+                        <label className="text-[11px] text-slate-400 block truncate">CRC {i} · {THEMES[i - 1]}</label>
                         <Input
                           type="number"
                           step="0.1"
