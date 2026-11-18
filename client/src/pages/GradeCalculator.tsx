@@ -48,8 +48,8 @@ export const GradeCalculator: React.FC = () => {
     'INTEG_FORUM_1_IND', 'INTEG_FORUM_1_GRP', 'INTEG_FORUM_2_IND', 'INTEG_FORUM_2_GRP',
     ...[1, 2, 3, 4].map(i => `IMC_RP_${i}`),
     'IMC_HC_1', 'IMC_HC_2',
-    ...[1, 2, 3, 4].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
-    ...[1, 2, 3, 4].map(i => `IMC_CC_${i}`),
+    ...[1, 2, 3, 4, 5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
+    ...[1, 2, 3, 4, 5].map(i => `IMC_CC_${i}`),
     'IMC_PROVA_FINAL',
     'SFC_N1_RAS', 'SFC_N1_TEORICA', 'SFC_N1_PROJETO', 'SFC_N2_RELATORIO', 'SFC_N2_PRATICA_UBS', 'SFC_N2_DIARIO_1', 'SFC_N2_DIARIO_2', 'SFC_N2_DIARIO_3', 'SFC_N2_DIARIO_4', 'SFC_N2_DIARIO_5', 'SFC_N2_APRESENTACAO',
   ]
@@ -203,20 +203,20 @@ export const GradeCalculator: React.FC = () => {
   })
 
   // IMC II
-  // Neste semestre: 4 Roleplays + 2 idas ao HC (6 notas), 4 TBLs e 4 CRCs. As notas dos itens retirados ficam guardadas, fora da conta.
+  // Neste semestre: 4 Roleplays + 2 idas ao HC (6 notas), 6 TBLs e 5 CRCs.
   const rpList = [1, 2, 3, 4].map(i => getVal(`IMC_RP_${i}`))
   const hcList = [1, 2].map(i => getVal(`IMC_HC_${i}`))
   const prodM1 = [...rpList, ...hcList].reduce((acc, v) => acc * v, 1)
   const mediaM1 = Math.pow(prodM1, 1 / 6)
 
-  const tblScores = [1, 2, 3, 4].map(i => {
+  const tblScores = [1, 2, 3, 4, 5, 6].map(i => {
     const ind = getVal(`IMC_TBL_${i}_IND`)
     const grp = getVal(`IMC_TBL_${i}_GRP`)
     return (ind * 0.7) + (grp * 0.3)
   })
-  const ccScores = [1, 2, 3, 4].map(i => getVal(`IMC_CC_${i}`))
+  const ccScores = [1, 2, 3, 4, 5].map(i => getVal(`IMC_CC_${i}`))
   const prodM2 = [...tblScores, ...ccScores].reduce((acc, v) => acc * v, 1)
-  const mediaM2 = Math.pow(prodM2, 1 / 8)
+  const mediaM2 = Math.pow(prodM2, 1 / 11)
 
   const provaFinalIMC = scores['IMC_PROVA_FINAL'] !== '' ? Number(scores['IMC_PROVA_FINAL']) : null
   const mediaFinalIMC = provaFinalIMC !== null
@@ -895,16 +895,16 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  M2 = raiz 8ª do produto de 4 Médias de TBL (70% indiv + 30% grupo) e 4 CRCs
+                  M2 = raiz 11ª do produto de 6 Médias de TBL (70% indiv + 30% grupo) e 5 CRCs
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    4 Avaliações TBL (Individual 70% + Grupo 30%):
+                    6 Avaliações TBL (Individual 70% + Grupo 30%):
                   </span>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    {[1, 2, 3, 4].map(i => {
+                    {[1, 2, 3, 4, 5, 6].map(i => {
                       const ind = getVal(`IMC_TBL_${i}_IND`)
                       const grp = getVal(`IMC_TBL_${i}_GRP`)
                       const finalTbl = (ind * 0.7) + (grp * 0.3)
@@ -940,10 +940,10 @@ export const GradeCalculator: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    4 Notas de CRC:
+                    5 Notas de CRC:
                   </span>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                    {[1, 2, 3, 4].map(i => (
+                    {[1, 2, 3, 4, 5].map(i => (
                       <div key={i}>
                         <label className="text-[11px] text-slate-400 block truncate">CRC {i} · {THEMES[i - 1]}</label>
                         <Input
