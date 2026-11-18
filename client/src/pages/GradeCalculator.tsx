@@ -46,10 +46,10 @@ export const GradeCalculator: React.FC = () => {
     'HISTO_P1', 'HISTO_P2', 'HISTO_P3', 'HISTO_P4', 'HISTO_EXTRA',
     'INTEG_FORUM_1', 'INTEG_FORUM_2', 'INTEG_CASO_CLINICO',
     'INTEG_FORUM_1_IND', 'INTEG_FORUM_1_GRP', 'INTEG_FORUM_2_IND', 'INTEG_FORUM_2_GRP',
-    ...[1, 2, 3, 4, 5, 6].map(i => `IMC_RP_${i}`),
+    ...[1, 2, 3, 4].map(i => `IMC_RP_${i}`),
     'IMC_HC_1', 'IMC_HC_2',
-    ...[1, 2, 3, 4, 5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
-    ...[1, 2, 3, 4, 5, 6].map(i => `IMC_CC_${i}`),
+    ...[1, 2, 3, 4].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
+    ...[1, 2, 3, 4].map(i => `IMC_CC_${i}`),
     'IMC_PROVA_FINAL',
     'SFC_N1_RAS', 'SFC_N1_TEORICA', 'SFC_N1_PROJETO', 'SFC_N2_RELATORIO', 'SFC_N2_PRATICA_UBS', 'SFC_N2_DIARIO_1', 'SFC_N2_DIARIO_2', 'SFC_N2_DIARIO_3', 'SFC_N2_DIARIO_4', 'SFC_N2_DIARIO_5', 'SFC_N2_APRESENTACAO',
   ]
@@ -92,7 +92,7 @@ export const GradeCalculator: React.FC = () => {
             setScores(prev => {
               const updated = { ...prev }
               data.grades.forEach((g: GradeItem) => {
-                if (g.score !== null && g.score !== undefined) {
+                if (SCORE_KEYS.includes(g.item_key) && g.score !== null && g.score !== undefined) {
                   updated[g.item_key] = g.score
                 }
               })
@@ -146,17 +146,6 @@ export const GradeCalculator: React.FC = () => {
   const M1_PREFIXES = ['IMC_RP_', 'IMC_HC_']
   const M2_PREFIXES = ['IMC_TBL_', 'IMC_CC_']
   const SFC_PREFIXES = ['SFC_']
-  // Itens que não existem mais: continuam guardados, mas ficam fora do cálculo
-  const RETIRED_KEYS = [
-    'IMC_RP_5', 'IMC_RP_6',
-    ...[5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
-    'IMC_CC_5', 'IMC_CC_6',
-  ]
-  const retiredLabel = (k: string) => {
-    const m = k.match(/^IMC_(RP|CC|TBL)_(\d)(?:_(IND|GRP))?$/)
-    if (!m) return k
-    return m[1] === 'TBL' ? `TBL ${m[2]} ${m[3] === 'IND' ? 'indiv.' : 'grupo'}` : `${m[1] === 'CC' ? 'CRC' : 'RP'} ${m[2]}`
-  }
   const THEMES = ['Dispneia', 'Tosse, Exp. & Cian.', 'Icterícia', 'Dispepsia', 'Diarreia', 'Alt. Urinárias']
   const hasVal = (k: string) => scores[k] !== '' && scores[k] !== undefined
 
@@ -278,7 +267,7 @@ export const GradeCalculator: React.FC = () => {
     }
     setSaving(true)
     try {
-      const gradesList = Object.entries(scores).map(([key, val]) => {
+      const gradesList = Object.entries(scores).filter(([key]) => SCORE_KEYS.includes(key)).map(([key, val]) => {
         let moduleName = 'CHS_II'
         let disc: string | undefined = undefined
 
@@ -973,28 +962,6 @@ export const GradeCalculator: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
-
-            {(RETIRED_KEYS.some(hasVal)) && (
-              <Card className="md:col-span-2 border-amber-200 dark:border-amber-900/50">
-                <CardHeader>
-                  <CardTitle className="text-sm text-amber-700 dark:text-amber-400">Notas antigas guardadas (fora do cálculo)</CardTitle>
-                  <CardDescription>
-                    Neste semestre valem 4 Roleplays, 4 TBLs e 4 CRCs. Estas notas que você lançou antes continuam salvas, mas não entram na média.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-2">
-                    {RETIRED_KEYS.filter(hasVal).map(k => (
-                      <div key={k}>
-                        <label className="text-[11px] text-slate-400">{retiredLabel(k)}</label>
-                        <Input type="number" step="0.1" min="0" max="10" value={scores[k]}
-                          onChange={e => handleScoreChange(k, e.target.value)} className="h-8 text-xs" />
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
           </div>
         </div>
       )}
