@@ -146,6 +146,17 @@ export const GradeCalculator: React.FC = () => {
   const M1_PREFIXES = ['IMC_RP_', 'IMC_HC_']
   const M2_PREFIXES = ['IMC_TBL_', 'IMC_CC_']
   const SFC_PREFIXES = ['SFC_']
+  // Itens que não existem mais: continuam guardados, mas ficam fora do cálculo
+  const RETIRED_KEYS = [
+    'IMC_RP_3', 'IMC_RP_4', 'IMC_RP_5', 'IMC_RP_6',
+    ...[5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
+    'IMC_CC_4', 'IMC_CC_5', 'IMC_CC_6',
+  ]
+  const retiredLabel = (k: string) => {
+    const m = k.match(/^IMC_(RP|CC|TBL)_(\d)(?:_(IND|GRP))?$/)
+    if (!m) return k
+    return m[1] === 'TBL' ? `TBL ${m[2]} ${m[3] === 'IND' ? 'indiv.' : 'grupo'}` : `${m[1] === 'CC' ? 'CRC' : 'RP'} ${m[2]}`
+  }
   const THEMES = ['Dispneia', 'Tosse, Exp. & Cian.', 'Icterícia', 'Dispepsia', 'Diarreia', 'Alt. Urinárias']
   const hasVal = (k: string) => scores[k] !== '' && scores[k] !== undefined
 
@@ -203,20 +214,20 @@ export const GradeCalculator: React.FC = () => {
   })
 
   // IMC II
-  // Planilha oficial: 4 Roleplays + 2 idas ao HC (6 notas). RP 5/6 e CC 6 antigos não entram na conta.
-  const rpList = [1, 2, 3, 4].map(i => getVal(`IMC_RP_${i}`))
+  // Neste semestre: 2 Roleplays + 2 idas ao HC (4 notas), 4 TBLs e 3 CRCs. As notas dos itens retirados ficam guardadas, fora da conta.
+  const rpList = [1, 2].map(i => getVal(`IMC_RP_${i}`))
   const hcList = [1, 2].map(i => getVal(`IMC_HC_${i}`))
   const prodM1 = [...rpList, ...hcList].reduce((acc, v) => acc * v, 1)
-  const mediaM1 = Math.pow(prodM1, 1 / 6)
+  const mediaM1 = Math.pow(prodM1, 1 / 4)
 
-  const tblScores = [1, 2, 3, 4, 5, 6].map(i => {
+  const tblScores = [1, 2, 3, 4].map(i => {
     const ind = getVal(`IMC_TBL_${i}_IND`)
     const grp = getVal(`IMC_TBL_${i}_GRP`)
     return (ind * 0.7) + (grp * 0.3)
   })
-  const ccScores = [1, 2, 3, 4, 5].map(i => getVal(`IMC_CC_${i}`))
+  const ccScores = [1, 2, 3].map(i => getVal(`IMC_CC_${i}`))
   const prodM2 = [...tblScores, ...ccScores].reduce((acc, v) => acc * v, 1)
-  const mediaM2 = Math.pow(prodM2, 1 / 11)
+  const mediaM2 = Math.pow(prodM2, 1 / 7)
 
   const provaFinalIMC = scores['IMC_PROVA_FINAL'] !== '' ? Number(scores['IMC_PROVA_FINAL']) : null
   const mediaFinalIMC = provaFinalIMC !== null
@@ -829,16 +840,16 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  M1 = raiz 6ª do produto de 4 Roleplays e 2 idas ao HC (cada nota ÷ 10, pois são lançadas de 0 a 100)
+                  M1 = raiz 4ª do produto de 2 Roleplays e 2 idas ao HC (cada nota ÷ 10, pois são lançadas de 0 a 100)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    4 Notas de Roleplay:
+                    2 Notas de Roleplay:
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3, 4].map(i => (
+                    {[1, 2].map(i => (
                       <div key={i}>
                         <label className="text-[11px] text-slate-400">RP {i} · {THEMES[i - 1]}</label>
                         <Input
@@ -895,16 +906,16 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  M2 = raiz 11ª do produto de 6 Médias de TBL (70% indiv + 30% grupo) e 5 CRCs
+                  M2 = raiz 7ª do produto de 4 Médias de TBL (70% indiv + 30% grupo) e 3 CRCs
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    6 Avaliações TBL (Individual 70% + Grupo 30%):
+                    4 Avaliações TBL (Individual 70% + Grupo 30%):
                   </span>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    {[1, 2, 3, 4, 5, 6].map(i => {
+                    {[1, 2, 3, 4].map(i => {
                       const ind = getVal(`IMC_TBL_${i}_IND`)
                       const grp = getVal(`IMC_TBL_${i}_GRP`)
                       const finalTbl = (ind * 0.7) + (grp * 0.3)
@@ -940,10 +951,10 @@ export const GradeCalculator: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    5 Notas de CRC:
+                    3 Notas de CRC:
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3, 4, 5].map(i => (
+                    {[1, 2, 3].map(i => (
                       <div key={i}>
                         <label className="text-[11px] text-slate-400">CRC {i} · {THEMES[i - 1]}</label>
                         <Input
@@ -963,19 +974,19 @@ export const GradeCalculator: React.FC = () => {
               </CardContent>
             </Card>
 
-            {(['IMC_RP_5', 'IMC_RP_6', 'IMC_CC_6'].some(hasVal)) && (
+            {(RETIRED_KEYS.some(hasVal)) && (
               <Card className="md:col-span-2 border-amber-200 dark:border-amber-900/50">
                 <CardHeader>
                   <CardTitle className="text-sm text-amber-700 dark:text-amber-400">Notas antigas guardadas (fora do cálculo)</CardTitle>
                   <CardDescription>
-                    A planilha oficial usa 4 Roleplays e 5 CRCs. Estas notas que você lançou antes continuam salvas, mas não entram na média.
+                    Neste semestre valem 2 Roleplays, 4 TBLs e 3 CRCs. Estas notas que você lançou antes continuam salvas, mas não entram na média.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-3 gap-2">
-                    {['IMC_RP_5', 'IMC_RP_6', 'IMC_CC_6'].filter(hasVal).map(k => (
+                    {RETIRED_KEYS.filter(hasVal).map(k => (
                       <div key={k}>
-                        <label className="text-[11px] text-slate-400">{k === 'IMC_CC_6' ? 'CC 6' : `RP ${k.slice(-1)}`}</label>
+                        <label className="text-[11px] text-slate-400">{retiredLabel(k)}</label>
                         <Input type="number" step="0.1" min="0" max="10" value={scores[k]}
                           onChange={e => handleScoreChange(k, e.target.value)} className="h-8 text-xs" />
                       </div>
