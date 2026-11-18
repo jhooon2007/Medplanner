@@ -45,6 +45,7 @@ export const GradeCalculator: React.FC = () => {
     'FISIO_A1', 'FISIO_A2', 'FISIO_A3',
     'HISTO_P1', 'HISTO_P2', 'HISTO_P3', 'HISTO_P4', 'HISTO_EXTRA',
     'INTEG_FORUM_1', 'INTEG_FORUM_2', 'INTEG_CASO_CLINICO',
+    'INTEG_FORUM_1_IND', 'INTEG_FORUM_1_GRP', 'INTEG_FORUM_2_IND', 'INTEG_FORUM_2_GRP',
     ...[1, 2, 3, 4, 5, 6].map(i => `IMC_RP_${i}`),
     'IMC_HC_1', 'IMC_HC_2',
     ...[1, 2, 3, 4, 5, 6].flatMap(i => [`IMC_TBL_${i}_IND`, `IMC_TBL_${i}_GRP`]),
@@ -143,6 +144,8 @@ export const GradeCalculator: React.FC = () => {
   const CHS_PREFIXES = ['ANA_', 'BIOQ_', 'FISIO_', 'HISTO_', 'INTEG_']
   const M1_PREFIXES = ['IMC_RP_', 'IMC_HC_']
   const M2_PREFIXES = ['IMC_TBL_', 'IMC_CC_']
+  const THEMES = ['Dispneia', 'Tosse, Exp. & Cian.', 'Icterícia', 'Dispepsia', 'Diarreia', 'Alt. Urinárias']
+  const hasVal = (k: string) => scores[k] !== '' && scores[k] !== undefined
 
   // CHS II
   const anaN1 = Math.min(10, getVal('ANA_N1_PROVA') + getVal('ANA_N1_PARTICIPACAO'))
@@ -151,12 +154,22 @@ export const GradeCalculator: React.FC = () => {
   const anaN2Pratica = Math.min(10, getVal('ANA_N2_PRATICA') + getVal('ANA_N2_PARTICIPACAO') + getVal('ANA_N2_SEMINARIO'))
   const anaN2 = (getVal('ANA_N2_TEORICA') + anaN2Pratica) / 2
   const mediaAnatomia = (anaN1 + anaN2) / 2
-  const mediaBioquimica = (getVal('BIOQ_N1') + getVal('BIOQ_N2') + getVal('BIOQ_N3') + getVal('BIOQ_N4')) / 4
+  // Bioquímica (planilha oficial): N1 vale 1/3; os outros 2/3 são a média de N2, N3 e Teatro Metabólico (BIOQ_N4)
+  const bioqRapha = (getVal('BIOQ_N2') + getVal('BIOQ_N3') + getVal('BIOQ_N4')) / 3
+  const mediaBioquimica = getVal('BIOQ_N1') / 3 + bioqRapha * 2 / 3
   const mediaFisiologia = (getVal('FISIO_A1') * 3.5 + getVal('FISIO_A2') * 4.0 + getVal('FISIO_A3') * 2.5) / 10
   const histoSomaProvas = (getVal('HISTO_P1') + getVal('HISTO_P2') + getVal('HISTO_P3') + getVal('HISTO_P4')) / 4
   const mediaHistologia = Math.min(10, histoSomaProvas + Math.min(0.5, getVal('HISTO_EXTRA')))
 
-  const mediaIntegrador = (getVal('INTEG_FORUM_1') + getVal('INTEG_FORUM_2') + getVal('INTEG_CASO_CLINICO')) / 3
+  // Fórum = 70% individual + 30% grupo. Quem já tinha lançado a média direta do fórum (campo antigo)
+  // mantém o valor: ele só é usado enquanto individual/grupo estiverem vazios.
+  const forumMedia = (n: 1 | 2) => {
+    const hasNew = scores[`INTEG_FORUM_${n}_IND`] !== '' || scores[`INTEG_FORUM_${n}_GRP`] !== ''
+    return hasNew
+      ? getVal(`INTEG_FORUM_${n}_IND`) * 0.7 + getVal(`INTEG_FORUM_${n}_GRP`) * 0.3
+      : getVal(`INTEG_FORUM_${n}`)
+  }
+  const mediaIntegrador = (getVal('INTEG_CASO_CLINICO') + forumMedia(1) + forumMedia(2)) / 3
 
   // Nota final CHS II: Média geométrica das 5 disciplinas (Anatomia, Bioquímica, Fisiologia, Histologia e Módulo Integrador)
   const prodCHS = Math.max(0.001, mediaAnatomia) *
@@ -167,19 +180,20 @@ export const GradeCalculator: React.FC = () => {
   const notaFinalCHS = Math.pow(prodCHS, 1 / 5)
 
   // IMC II
-  const rpList = [1, 2, 3, 4, 5, 6].map(i => Math.max(0.001, getVal(`IMC_RP_${i}`)))
+  // Planilha oficial: 4 Roleplays + 2 idas ao HC (6 notas). RP 5/6 e CC 6 antigos não entram na conta.
+  const rpList = [1, 2, 3, 4].map(i => Math.max(0.001, getVal(`IMC_RP_${i}`)))
   const hcList = [1, 2].map(i => Math.max(0.001, getVal(`IMC_HC_${i}`)))
   const prodM1 = [...rpList, ...hcList].reduce((acc, v) => acc * v, 1)
-  const mediaM1 = Math.pow(prodM1, 1 / 8)
+  const mediaM1 = Math.pow(prodM1, 1 / 6)
 
   const tblScores = [1, 2, 3, 4, 5, 6].map(i => {
     const ind = getVal(`IMC_TBL_${i}_IND`)
     const grp = getVal(`IMC_TBL_${i}_GRP`)
     return Math.max(0.001, (ind * 0.7) + (grp * 0.3))
   })
-  const ccScores = [1, 2, 3, 4, 5, 6].map(i => Math.max(0.001, getVal(`IMC_CC_${i}`)))
+  const ccScores = [1, 2, 3, 4, 5].map(i => Math.max(0.001, getVal(`IMC_CC_${i}`)))
   const prodM2 = [...tblScores, ...ccScores].reduce((acc, v) => acc * v, 1)
-  const mediaM2 = Math.pow(prodM2, 1 / 12)
+  const mediaM2 = Math.pow(prodM2, 1 / 11)
 
   const provaFinalIMC = scores['IMC_PROVA_FINAL'] !== '' ? Number(scores['IMC_PROVA_FINAL']) : null
   const mediaFinalIMC = provaFinalIMC !== null
@@ -187,6 +201,39 @@ export const GradeCalculator: React.FC = () => {
     : (mediaM1 * 0.25) + (mediaM2 * 0.25)
 
   const notaNecessariaPF = Math.max(0, (6.0 - (mediaM1 * 0.25 + mediaM2 * 0.25)) / 0.50)
+
+  const forumInputs = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {([1, 2] as const).map(n => (
+        <div key={n} className="p-2 bg-white/60 dark:bg-slate-900/40 rounded-xl space-y-1.5">
+          <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+            <span>Fórum {n}</span>
+            <span className="text-blue-600 font-mono">{show(forumMedia(n), [`INTEG_FORUM_${n}`], 1)}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(['IND', 'GRP'] as const).map(t => (
+              <div key={t}>
+                <label className="text-[10px] text-slate-400">{t === 'IND' ? 'Individual (70%)' : 'Grupo (30%)'}</label>
+                <Input type="number" step="0.1" min="0" max="10" placeholder="Nota"
+                  value={scores[`INTEG_FORUM_${n}_${t}`]}
+                  onChange={e => handleScoreChange(`INTEG_FORUM_${n}_${t}`, e.target.value)}
+                  className="h-8 text-xs" />
+              </div>
+            ))}
+          </div>
+          {hasVal(`INTEG_FORUM_${n}`) && (
+            <div>
+              <label className="text-[10px] text-amber-600">Média do Fórum {n} lançada antes (vale só se individual/grupo estiverem vazios)</label>
+              <Input type="number" step="0.1" min="0" max="10"
+                value={scores[`INTEG_FORUM_${n}`]}
+                onChange={e => handleScoreChange(`INTEG_FORUM_${n}`, e.target.value)}
+                className="h-8 text-xs" />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 
   const handleSaveGrades = async () => {
     if (!token) return
@@ -356,12 +403,12 @@ export const GradeCalculator: React.FC = () => {
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1 Prova (Teór-Prát)</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1 Prova (Teór-Prát, máx 9)</label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
-                      max="10"
+                      max="9"
                       placeholder="Insira sua nota"
                       value={scores['ANA_N1_PROVA']}
                       onChange={e => handleScoreChange('ANA_N1_PROVA', e.target.value)}
@@ -369,12 +416,12 @@ export const GradeCalculator: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1 Participação</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N1 Participação (máx 1)</label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
-                      max="10"
+                      max="1"
                       placeholder="Insira sua nota"
                       value={scores['ANA_N1_PARTICIPACAO']}
                       onChange={e => handleScoreChange('ANA_N1_PARTICIPACAO', e.target.value)}
@@ -458,7 +505,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média aritmética de 4 avaliações (N1, N2, N3 e N4)
+                  N1 (1/3) + média de N2, N3 e Teatro Metabólico (2/3)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -503,7 +550,7 @@ export const GradeCalculator: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">N4</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Teatro Metabólico</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -594,7 +641,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média aritmética de 4 provas + até 0,5 ponto extra de práticas
+                  Média das 4 avaliações (teórica e prática N1 e N2) + Roteiro (0 a 0,5)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -652,7 +699,7 @@ export const GradeCalculator: React.FC = () => {
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Ponto Extra Prático</label>
+                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Roteiro (0 a 0,5)</label>
                     <Input
                       type="number"
                       step="0.1"
@@ -680,37 +727,12 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média aritmética dos 2 Fóruns e do Caso Clínico
+                  Média do Caso Integrador e dos 2 Fóruns (cada Fórum = 70% individual + 30% grupo)
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
-                  <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Fórum 1</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="10"
-                      placeholder="Insira sua nota"
-                      value={scores['INTEG_FORUM_1']}
-                      onChange={e => handleScoreChange('INTEG_FORUM_1', e.target.value)}
-                      className="mt-1 h-9 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Fórum 2</label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="10"
-                      placeholder="Insira sua nota"
-                      value={scores['INTEG_FORUM_2']}
-                      onChange={e => handleScoreChange('INTEG_FORUM_2', e.target.value)}
-                      className="mt-1 h-9 text-xs"
-                    />
-                  </div>
+                  <div className="sm:col-span-3">{forumInputs()}</div>
                   <div>
                     <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Caso Clínico Integrador</label>
                     <Input
@@ -788,18 +810,18 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média geométrica de 6 notas Role Play e 2 notas HC
+                  Média geométrica de 4 Roleplays (Dispneia, Tosse, Icterícia, Dispepsia) e 2 idas ao HC
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    6 Notas de Role Play:
+                    4 Notas de Roleplay:
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3, 4, 5, 6].map(i => (
+                    {[1, 2, 3, 4].map(i => (
                       <div key={i}>
-                        <label className="text-[11px] text-slate-400">RP {i}</label>
+                        <label className="text-[11px] text-slate-400">RP {i} · {THEMES[i - 1]}</label>
                         <Input
                           type="number"
                           step="0.1"
@@ -817,11 +839,11 @@ export const GradeCalculator: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    2 Notas de História Clínica (HC):
+                    2 idas ao HC (Paciente Real):
                   </span>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] text-slate-400">HC 1</label>
+                      <label className="text-[11px] text-slate-400">1ª ida ao HC</label>
                       <Input
                         type="number"
                         step="0.1"
@@ -834,7 +856,7 @@ export const GradeCalculator: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-slate-400">HC 2</label>
+                      <label className="text-[11px] text-slate-400">2ª ida ao HC</label>
                       <Input
                         type="number"
                         step="0.1"
@@ -863,7 +885,7 @@ export const GradeCalculator: React.FC = () => {
                   </Badge>
                 </div>
                 <CardDescription>
-                  Média geométrica de 6 TBLs (70% indiv + 30% grupo) e 6 Casos Clínicos
+                  Média geométrica de 6 TBLs (70% indiv + 30% grupo) e 5 CRCs
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -879,7 +901,7 @@ export const GradeCalculator: React.FC = () => {
                       return (
                         <div key={i} className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
                           <div className="flex justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            <span>TBL {i}</span>
+                            <span>TBL {i} · {THEMES[i - 1]}</span>
                             <span className="text-blue-600 font-mono">{show(finalTbl, [`IMC_TBL_${i}_`], 1)}</span>
                           </div>
                           <div className="grid grid-cols-2 gap-1.5">
@@ -908,12 +930,12 @@ export const GradeCalculator: React.FC = () => {
 
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-2">
-                    6 Notas dos Casos Clínicos:
+                    5 Notas de CRC:
                   </span>
                   <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3, 4, 5, 6].map(i => (
+                    {[1, 2, 3, 4, 5].map(i => (
                       <div key={i}>
-                        <label className="text-[11px] text-slate-400">CC {i}</label>
+                        <label className="text-[11px] text-slate-400">CRC {i} · {THEMES[i - 1]}</label>
                         <Input
                           type="number"
                           step="0.1"
@@ -930,6 +952,28 @@ export const GradeCalculator: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {(['IMC_RP_5', 'IMC_RP_6', 'IMC_CC_6'].some(hasVal)) && (
+              <Card className="md:col-span-2 border-amber-200 dark:border-amber-900/50">
+                <CardHeader>
+                  <CardTitle className="text-sm text-amber-700 dark:text-amber-400">Notas antigas guardadas (fora do cálculo)</CardTitle>
+                  <CardDescription>
+                    A planilha oficial usa 4 Roleplays e 5 CRCs. Estas notas que você lançou antes continuam salvas, mas não entram na média.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['IMC_RP_5', 'IMC_RP_6', 'IMC_CC_6'].filter(hasVal).map(k => (
+                      <div key={k}>
+                        <label className="text-[11px] text-slate-400">{k === 'IMC_CC_6' ? 'CC 6' : `RP ${k.slice(-1)}`}</label>
+                        <Input type="number" step="0.1" min="0" max="10" value={scores[k]}
+                          onChange={e => handleScoreChange(k, e.target.value)} className="h-8 text-xs" />
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       )}
@@ -947,43 +991,12 @@ export const GradeCalculator: React.FC = () => {
               </Badge>
             </div>
             <CardDescription>
-              Média aritmética das notas dos Fóruns Integradores e do Caso Clínico Integrador.
+              Média do Caso Integrador e dos 2 Fóruns (cada Fórum = 70% individual + 30% grupo).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
-              <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Fórum Integrador 1
-                </label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="10"
-                  placeholder="Insira sua nota"
-                  value={scores['INTEG_FORUM_1']}
-                  onChange={e => handleScoreChange('INTEG_FORUM_1', e.target.value)}
-                  className="mt-1 h-9 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Fórum Integrador 2
-                </label>
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="10"
-                  placeholder="Insira sua nota"
-                  value={scores['INTEG_FORUM_2']}
-                  onChange={e => handleScoreChange('INTEG_FORUM_2', e.target.value)}
-                  className="mt-1 h-9 text-xs"
-                />
-              </div>
-
+              <div className="sm:col-span-3">{forumInputs()}</div>
               <div>
                 <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                   Caso Clínico Integrador
