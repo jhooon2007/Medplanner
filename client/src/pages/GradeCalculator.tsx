@@ -320,9 +320,6 @@ export const GradeCalculator: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             Cálculo de Notas
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Fórmulas idênticas às da planilha oficial 2026.2 (médias geométricas e ponderadas) com projeção de aprovação.
-          </p>
         </div>
 
         {user && (
